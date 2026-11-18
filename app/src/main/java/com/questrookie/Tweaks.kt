@@ -9,10 +9,11 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 // Headset tweaks via setprop/broadcast. setprops reset on reboot, so saved choices are re-applied on app start.
@@ -139,29 +140,30 @@ private fun applyTweak(s: AppState, t: Tweak, v: String) {
 @Composable
 fun TweaksScreen(s: AppState) {
     val values = remember { mutableStateMapOf<String, String>().apply { TWEAKS.forEach { put(it.key, TweakStore.get(s.ctx, it)) } } }
+    // Requested vs. actual: a game that sets its own rate, or a Quest 1 asked for 90 Hz, shows up here as a mismatch.
+    val rate by produceState(currentRefreshRate(s.ctx)) {
+        while (true) { kotlinx.coroutines.delay(5_000); value = currentRefreshRate(s.ctx) }
+    }
     Column(Modifier.fillMaxSize()) {
-        // Requested vs. actual: a game that sets its own rate, or a Quest 1 asked for 90 Hz, shows up here as a mismatch.
-        val rate by produceState(currentRefreshRate(s.ctx)) {
-            while (true) { kotlinx.coroutines.delay(5_000); value = currentRefreshRate(s.ctx) }
-        }
-        ScreenHeader("Settings", "${MODEL.name}" + (rate?.let { " · running at $it Hz" } ?: "") + " · re-applied after each reboot") {
-            // One pill, not a button per preset: four buttons beside the vitals squeezed the last one into a column.
+        TopBar()
+        Toolbar("${MODEL.name}" + (rate?.let { " · running at $it Hz" } ?: "") + " · re-applied after each reboot") {
+            // One pill, not a button per preset.
             DropPill(PRESETS.map { "Preset: ${it.first}" to it.first }, matchingPreset { values[it.key].orEmpty() } ?: "Preset: Custom", Modifier.width(240.dp), enabled = s.busy == null) { name ->
                 applyPreset(s, values, name, PRESETS.first { it.first == name }.second)
             }
-            // Tweaks go over ADB, so this stays in the header instead of a banner that eats the list's space.
-            if (!s.installer.connected) FilledTonalButton({ connect(s) }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Connect ADB") }
+            // Tweaks go over ADB, so this stays up here instead of a banner that eats the list's space.
+            if (!s.installer.connected) PillButton("Connect ADB", { connect(s) }, icon = QIcons.Usb, tone = Tone.Accent)
         }
-        // Staggered: cards differ a lot in height, and a plain grid leaves a hole beside every short one.
-        // Headset tweaks first (the presets above drive them), then the app's own settings.
+        // Staggered: panels differ a lot in height, and a plain grid leaves a hole beside every short one.
+        // Headset tweaks first (the preset above drives them), then the app's own settings.
         LazyVerticalStaggeredGrid(
-            StaggeredGridCells.Adaptive(360.dp), Modifier.weight(1f), contentPadding = PaddingValues(bottom = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalItemSpacing = 16.dp,
+            StaggeredGridCells.Adaptive(340.dp), Modifier.weight(1f), contentPadding = PaddingValues(bottom = Space.xxl),
+            horizontalArrangement = Arrangement.spacedBy(Space.lg), verticalItemSpacing = Space.lg,
         ) {
-            item(key = "h-perf", span = StaggeredGridItemSpan.FullLine) { SectionTitle("Headset performance") }
+            item(key = "h-perf", span = StaggeredGridItemSpan.FullLine) { Heading("Headset performance") }
             items(TWEAKS, key = { it.key }) { t -> TweakCard(s, t, values[t.key].orEmpty()) { values[t.key] = it } }
             item(key = "automation") { AutomationCard(s) }
-            item(key = "h-app", span = StaggeredGridItemSpan.FullLine) { SectionTitle("App and headset") }
+            item(key = "h-app", span = StaggeredGridItemSpan.FullLine) { Heading("App and headset") }
             item(key = "sources") { SourcesCard(s) }
             item(key = "headset") { HeadsetCard(s) }
             item(key = "content") { ContentCard(s) }
@@ -170,16 +172,12 @@ fun TweaksScreen(s: AppState) {
     }
 }
 
-/** One button per preset, the one whose values are all set right now ticked. [values] is the caller's view of the global tweaks. */
+/** One pill per preset, the one whose values are all set right now filled and ticked. [values] is the caller's view of the global tweaks. */
 @Composable
 fun PresetButtons(s: AppState, values: MutableMap<String, String>) = PRESETS.forEach { (name, preset) ->
-    // The preset whose values are all set right now is the active one; Balanced = everything at Default.
+    // Balanced = everything at Default.
     val active = TWEAKS.all { values[it.key].orEmpty() == preset[it.key].orEmpty() }
-    val pad = Modifier.focusRing(RoundedCornerShape(24.dp))
-    if (active) Button({ applyPreset(s, values, name, preset) }, pad, enabled = s.busy == null) {
-        Icon(Icons.Default.Check, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(name)
-    }
-    else FilledTonalButton({ applyPreset(s, values, name, preset) }, pad, enabled = s.busy == null) { Text(name) }
+    PillButton(name, { applyPreset(s, values, name, preset) }, icon = if (active) Icons.Default.Check else null, tone = if (active) Tone.Accent else Tone.Raised, enabled = s.busy == null)
 }
 
 private fun applyPreset(s: AppState, values: MutableMap<String, String>, name: String, preset: Map<String, String>) = s.task("Applying $name") {
@@ -192,7 +190,7 @@ private fun applyPreset(s: AppState, values: MutableMap<String, String>, name: S
 }
 
 /** Rookie's Quest options and ADB command window: username, OS updates, a raw shell command and ADB key reset. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HeadsetCard(s: AppState) {
     var name by remember { mutableStateOf("") }
@@ -200,40 +198,46 @@ private fun HeadsetCard(s: AppState) {
     var updates by remember { mutableStateOf<Boolean?>(null) }
     var confirmReboot by remember { mutableStateOf(false) }
     if (confirmReboot) AlertDialog(
-        onDismissRequest = { confirmReboot = false },
+        onDismissRequest = { confirmReboot = false }, containerColor = Palette.Panel,
         title = { Text("Reboot headset?") },
-        text = { Text("Running installs stop, and Wireless debugging is off after the restart until you turn it back on.") },
-        confirmButton = {
-            Button({ confirmReboot = false; s.task("Rebooting") { s.installer.reboot(); "Headset is rebooting" } }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Reboot") }
-        },
-        dismissButton = { TextButton({ confirmReboot = false }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Cancel") } },
+        text = { Text("Running installs stop, and Wireless debugging is off after the restart until you turn it back on.", color = Palette.Dim) },
+        confirmButton = { PillButton("Reboot", { confirmReboot = false; s.task("Rebooting") { s.installer.reboot(); "Headset is rebooting" } }, tone = Tone.Danger) },
+        dismissButton = { PillButton("Cancel", { confirmReboot = false }) },
     )
     LaunchedEffect(s.installer.connected) {
         if (s.installer.connected) updates = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { s.installer.osUpdatesEnabled() }.getOrNull() }
     }
     val ready = s.installer.connected && s.busy == null
-    Card(Modifier.glass(), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Headset", style = MaterialTheme.typography.titleMedium)
-            Text("Some games read the player name from /sdcard. Commands run as adb shell.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                OutlinedTextField(name, { name = it }, Modifier.weight(1f), singleLine = true, label = { Text("Username") })
-                FilledTonalButton({ s.task("Setting username") { s.installer.setUsername(name.trim()); "Username set to ${name.trim()}" } }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = ready && name.isNotBlank()) { Text("Set") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                OutlinedTextField(cmd, { cmd = it }, Modifier.weight(1f), singleLine = true, label = { Text("Shell command") })
-                FilledTonalButton({ s.task("Running command") { s.installer.shell(cmd).trim().ifEmpty { "Done" }.take(300) } }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = ready && cmd.isNotBlank()) { Text("Run") }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                updates?.let { on ->
-                    FilledTonalButton({
-                        s.task(if (on) "Disabling OS updates" else "Enabling OS updates") { s.installer.setOsUpdates(!on); updates = !on; if (on) "OS updates off" else "OS updates on" }
-                    }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = ready) { Text(if (on) "Turn off OS updates" else "Turn on OS updates") }
-                }
-                TextButton({ s.installer.resetAuth(); s.status = "ADB key reset; connect again and allow it in the headset" }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = s.busy == null) { Text("Reset ADB key") }
-                TextButton({ confirmReboot = true }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = ready) { Text("Reboot headset", color = MaterialTheme.colorScheme.error) }
-            }
+    Panel("Headset", hint = "Some games read the player name from /sdcard. Commands run as adb shell.", icon = QIcons.Usb) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
+            InputPill(name, { name = it }, "Username", Modifier.weight(1f))
+            PillButton("Set", { s.task("Setting username") { s.installer.setUsername(name.trim()); "Username set to ${name.trim()}" } }, enabled = ready && name.isNotBlank())
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalAlignment = Alignment.CenterVertically) {
+            InputPill(cmd, { cmd = it }, "Shell command", Modifier.weight(1f))
+            PillButton("Run", { s.task("Running command") { s.installer.shell(cmd).trim().ifEmpty { "Done" }.take(300) } }, enabled = ready && cmd.isNotBlank())
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            updates?.let { on ->
+                PillButton(if (on) "Turn off OS updates" else "Turn on OS updates", {
+                    s.task(if (on) "Disabling OS updates" else "Enabling OS updates") { s.installer.setOsUpdates(!on); updates = !on; if (on) "OS updates off" else "OS updates on" }
+                }, enabled = ready)
+            }
+            PillButton("Reset ADB key", { s.installer.resetAuth(); s.status = "ADB key reset; connect again and allow it in the headset" }, enabled = s.busy == null)
+            PillButton("Reboot headset", { confirmReboot = true }, tone = Tone.Danger, enabled = ready)
+        }
+    }
+}
+
+/** A switch with its label; the whole row toggles. */
+@Composable
+private fun SwitchRow(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().tap(RoundedCornerShape(Radius.control)) { onChange(!checked) }.padding(horizontal = Space.xs, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md),
+    ) {
+        Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Switch(checked, null, colors = SwitchDefaults.colors(checkedTrackColor = Orange, checkedThumbColor = Palette.Ink))
     }
 }
 
@@ -248,89 +252,57 @@ private fun AutomationCard(s: AppState) {
         prefs.edit().putBoolean(key, v).apply()
         if (Automation.wanted(s.ctx)) KeepAliveService.start(s.ctx)
     }
-    SettingsCard("Automation", "Game tweaks apply when a game starts from Home too, not only from here. Hot headset: CPU/GPU level steps down one notch until it cools. Low battery: the Battery saver preset until you plug in.") {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (!s.hasUsageAccess()) FilledTonalButton({ s.grantUsageAccess() }, Modifier.focusRing(RoundedCornerShape(Radius.pill)), enabled = s.installer.connected && s.busy == null) { Text("Grant usage access over ADB (needed to see which game is running)") }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Switch(profiles, { profiles = it; set("profiles", it) }, Modifier.focusRing(RoundedCornerShape(Radius.pill))); Text("Apply game tweaks from any launcher")
-            }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Switch(thermal, { thermal = it; set("thermal", it) }, Modifier.focusRing(RoundedCornerShape(Radius.pill))); Text("Step CPU/GPU level down when hot")
-            }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Switch(battery, { battery = it; set("battery", it) }, Modifier.focusRing(RoundedCornerShape(Radius.pill))); Text("Battery saver under 20% (unless charging)")
-            }
-        }
+    Panel("Automation", hint = "Game tweaks apply when a game starts from Home too, not only from here. Hot headset: CPU/GPU level steps down one notch until it cools. Low battery: the Battery saver preset until you plug in.", icon = QIcons.Sync) {
+        if (!s.hasUsageAccess()) PillButton("Grant usage access over ADB", { s.grantUsageAccess() }, tone = Tone.Accent, enabled = s.installer.connected && s.busy == null)
+        if (!s.hasUsageAccess()) Text("Needed to see which game is running.", style = MaterialTheme.typography.bodySmall, color = Palette.Dim)
+        SwitchRow("Apply game tweaks from any launcher", profiles) { profiles = it; set("profiles", it) }
+        SwitchRow("Step CPU/GPU level down when hot", thermal) { thermal = it; set("thermal", it) }
+        SwitchRow("Battery saver under 20% (unless charging)", battery) { battery = it; set("battery", it) }
     }
 }
 
-/** Where games come from; opens the Sources editor. */
+/** Where games come from; opens the Sources editor, and the browser shortcuts page. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SourcesCard(s: AppState) {
     var editing by remember { mutableStateOf(false) }
     val names = listOfNotNull("Mirror".takeIf { s.rookie.mirrors.isNotEmpty() }) + s.catalogs.map { it.name } + s.extras.map { it.label }
-    SettingsCard("Sources", names.joinToString(", ")) {
-        FilledTonalButton({ editing = true }, Modifier.focusRing(RoundedCornerShape(Radius.pill))) { Text("Manage sources") }
-        FilledTonalButton({ Shortcuts.start(s.ctx); Shortcuts.openInBrowser(s.ctx) }, Modifier.focusRing(RoundedCornerShape(Radius.pill))) { Text("Shortcuts") }
+    Panel("Sources", hint = names.joinToString(", "), icon = QIcons.Cloud) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+            PillButton("Manage sources", { editing = true }, tone = Tone.Accent)
+            PillButton("Shortcuts", { Shortcuts.start(s.ctx); Shortcuts.openInBrowser(s.ctx) }, icon = QIcons.OpenInNew)
+        }
     }
     if (editing) SourcesDialog(s) { editing = false }
 }
 
-/** Content preferences that used to sit among the Library filters. */
+/** Content preferences. */
 @Composable
 private fun ContentCard(s: AppState) {
-    SettingsCard("Hide 18+", "Hide titles marked 18+ everywhere in the store.") {
-        Switch(s.hideAdult, { s.chooseHideAdult(it) }, Modifier.focusRing(RoundedCornerShape(Radius.pill)))
+    Panel("Hide 18+", hint = "Hide titles marked 18+ everywhere in the store.", icon = Icons.Default.Lock) {
+        SwitchRow("Hide 18+ titles", s.hideAdult) { s.chooseHideAdult(it) }
     }
 }
 
-/** App-wide size, a card like the tweaks beside it rather than unlabelled chips in the header. */
+/** App-wide size. */
 @Composable
 private fun UiSizeCard(s: AppState) {
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
-    SettingsCard("App size", "Scales QuestRookie itself. Compact fits the most on a headset window.") {
-        UI_SIZES.forEach { (name, v) ->
-            QChip(
-                // The size is applied to the whole activity when it starts (see MainActivity), so it restarts to take effect.
-                selected = s.uiScale == v, onClick = { s.chooseUiScale(v); activity?.recreate() }, label = { Text(name) },
-                modifier = Modifier.focusRing(RoundedCornerShape(8.dp)),
-                leadingIcon = if (s.uiScale == v) {{ Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }} else null,
-            )
-        }
+    Panel("App size", hint = "Scales QuestRookie itself. Compact fits the most on a headset window.", icon = QIcons.Resolution) {
+        // The size is applied to the whole activity when it starts (see MainActivity), so it restarts to take effect.
+        Segmented(UI_SIZES.map { Seg(it.first) }, UI_SIZES.indexOfFirst { it.second == s.uiScale }, { i -> s.chooseUiScale(UI_SIZES[i].second); activity?.recreate() })
     }
 }
 
-@Composable
-private fun SectionTitle(text: String) =
-    Text(text, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-
-/** Title, one line of explanation, then the controls: the shape every settings card shares. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun SettingsCard(title: String, hint: String, content: @Composable () -> Unit) {
-    Card(Modifier.glass(), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
-        }
-    }
-}
-
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun TweakCard(s: AppState, t: Tweak, value: String, onChange: (String) -> Unit) {
-    Card(Modifier.glass(), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(t.label, style = MaterialTheme.typography.titleMedium)
-            Text(t.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            DropPill(t.options, value, Modifier.fillMaxWidth(), enabled = s.busy == null) { v ->
-                val label = t.options.first { it.second == v }.first
-                s.task("Applying ${t.label}") {
-                    applyTweak(s, t, v)
-                    onChange(v)
-                    "${t.label}: $label"
-                }
+    Panel(t.label, hint = t.hint) {
+        DropPill(t.options, value, Modifier.fillMaxWidth(), enabled = s.busy == null) { v ->
+            val label = t.options.first { it.second == v }.first
+            s.task("Applying ${t.label}") {
+                applyTweak(s, t, v)
+                onChange(v)
+                "${t.label}: $label"
             }
         }
     }

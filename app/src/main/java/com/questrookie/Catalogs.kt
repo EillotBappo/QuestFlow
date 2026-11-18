@@ -52,7 +52,26 @@ data class Details(
     val genres: List<String> = emptyList(), val publisher: String = "", val cover: String = "", val whatsNew: String = "",
 )
 
-val CATALOGS: List<Catalog> = listOf(TheVRSrc)
+val CATALOGS: List<Catalog> = listOf(TheVRSrc, SideQuest, FDroid)
+
+/** The free SideQuestRepos indexes. Glitch's CDN is shut down and androidapks.com re-hosts Play Store APKs; the nsfw index is never fetched. */
+object SideQuest : Catalog("SideQuest") {
+    private const val RAW = "https://raw.githubusercontent.com/the-expanse/SideQuestRepos/master"
+    private val CATEGORIES = listOf("vr-games", "vr-apps", "android-games", "android-apps")
+
+    override fun fetch(details: MutableMap<String, Details>) = CATEGORIES.flatMap { cat ->
+        URL("$RAW/$cat/index-v1.json").openStream().reader().use {
+            parseIndexV1(it, name, iconBase = "$RAW/$cat/icons/", skipHosts = listOf("cdn.glitch.com", "androidapks.com"), details = details)
+        }
+    }.ifEmpty { error("SideQuest returned no apps") }
+}
+
+/** F-Droid's main repo: free and open-source Android apps. Mostly phone apps; the source chip filters them. */
+object FDroid : Catalog("F-Droid") {
+    override fun fetch(details: MutableMap<String, Details>) = URL("https://f-droid.org/repo/index-v1.json").openStream().reader().use {
+        parseIndexV1(it, name, iconBase = "https://f-droid.org/repo/icons-640/", details = details)
+    }
+}
 
 /** A source added in Sources: any F-Droid-style repo's index-v1.json (SideQuestRepos uses the same format). */
 class RepoCatalog(name: String, val url: String) : Catalog(name) {

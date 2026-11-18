@@ -88,4 +88,9 @@ class CatalogsTest {
         val g = parseIndexV1(index.reader(), "F-Droid", iconBase = "").single()
         assertEquals("https://f-droid.org/repo/org.example/en-US/fg.png", g.thumbUrl)
     }
+
+    @Test
+    fun builtInSourcesInStoreOrder() {
+        assertEquals(listOf("TheVRSrc", "SideQuest", "F-Droid"), CATALOGS.map { it.name })
+    }
 }

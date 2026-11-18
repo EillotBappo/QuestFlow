@@ -4,24 +4,26 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
@@ -33,7 +35,7 @@ class MainActivity : ComponentActivity() {
         val installer = newInstaller(this)
         setContent {
             QuestTheme {
-                Surface(Modifier.fillMaxSize().backdrop(), color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) { App(rookie, installer) }
+                Surface(Modifier.fillMaxSize(), color = Palette.Base, contentColor = Palette.Text) { App(rookie, installer) }
             }
         }
     }
@@ -71,13 +73,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Section(val label: String, val icon: ImageVector) {
+
+/** The app's pages. Settings has no tab: the bottom bar's Options button opens it, like a tuner's. */
+enum class Section(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Default.Home),
-    Store("Store", QIcons.Gamepad),
-    MyGames("My games", QIcons.Apps),
+    Store("Store", Icons.Default.ShoppingCart),
+    MyGames("My games", QIcons.Gamepad),
     Downloads("Downloads", QIcons.Download),
-    Settings("Settings", Icons.Default.Settings),
+    Settings("Options", QIcons.Tune),
 }
+
+/** The open page, a way to switch, and the Downloads badge, for the tabs in every page's [TopBar]. Provided once by [App]. */
+class Nav(val section: Section, val downloads: Int, val go: (Section) -> Unit)
+
+val LocalNav = compositionLocalOf<Nav?> { null }
 
 @Composable
 fun App(rookie: Rookie, installer: Installer) {
@@ -93,6 +102,7 @@ fun App(rookie: Rookie, installer: Installer) {
     }
 
     var section by rememberSaveable { mutableStateOf(Section.Home) }
+    var help by remember { mutableStateOf(false) }
     // Back (and the controller's B, which Android turns into Back) goes to Store before it leaves the app.
     BackHandler(enabled = section != Section.Store) { section = Section.Store }
     val activity = LocalContext.current as? MainActivity
@@ -113,93 +123,170 @@ fun App(rookie: Rookie, installer: Installer) {
         s.status = ""
     }
     Scaffold(
-        containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface,
+        containerColor = Palette.Base, contentColor = Palette.Text,
         snackbarHost = {
             SnackbarHost(snackbar) {
-                Snackbar(
-                    it, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = MaterialTheme.colorScheme.onSurface,
-                    actionColor = MaterialTheme.colorScheme.primary, dismissActionContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Snackbar(it, containerColor = Palette.Raised, contentColor = Palette.Text, actionColor = Orange, dismissActionContentColor = Palette.Dim)
             }
         },
+        bottomBar = { BottomBar(s, section, { section = it }) { help = true } },
     ) { pad ->
-        // Side rail, like Horizon's own panels: a Quest window is wide, not tall, so vertical room goes to content.
-        Row(Modifier.padding(pad).fillMaxSize()) {
-            // A slim rail of round icon buttons, launcher style; the status strip above the page carries the headset's vitals.
-            NavigationRail(containerColor = RailColor) {
-                val colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                )
-                // Scrolls when the window is too short for every tab (landscape phone, small Quest panel).
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Section.entries.filter { it != Section.Settings }.forEach { sec ->
-                        NavigationRailItem(
-                            selected = section == sec, onClick = { section = sec },
-                            icon = {
-                                // Downloads shows how many installs are running or waiting.
-                                val n = if (sec == Section.Downloads) s.queue.activeCount else 0
-                                BadgedBox({ if (n > 0) Badge(containerColor = MaterialTheme.colorScheme.primary) { Text("$n") } }) { Icon(sec.icon, sec.label) }
-                            },
-                            modifier = Modifier.padding(vertical = 4.dp).focusRing(RoundedCornerShape(16.dp)), colors = colors,
-                        )
-                    }
-                }
-                // Settings sits apart at the bottom, like Horizon's own panels.
-                NavigationRailItem(
-                    selected = section == Section.Settings, onClick = { section = Section.Settings },
-                    icon = { Icon(Section.Settings.icon, Section.Settings.label) },
-                    modifier = Modifier.padding(bottom = 8.dp).focusRing(RoundedCornerShape(16.dp)), colors = colors,
-                )
-            }
-            Column(Modifier.weight(1f)) {
-                // What's running right now, at the top of the page instead of a bare bar at the bottom.
-                s.busy?.let { label ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Box(Modifier.weight(1f).padding(horizontal = 32.dp).fillMaxWidth()) {
-                    CompositionLocalProvider(LocalAppState provides s) { when (section) {
-                        Section.Home -> HomeScreen(s)
-                        Section.Store -> LibraryScreen(s)
-                        Section.MyGames -> MyGamesScreen(s)
-                        Section.Downloads -> DownloadsScreen(s)
-                        Section.Settings -> TweaksScreen(s)
-                    } }
+        Box(Modifier.padding(pad).fillMaxSize().padding(horizontal = Space.xxl)) {
+            CompositionLocalProvider(LocalNav provides Nav(section, s.queue.activeCount) { section = it }) {
+                when (section) {
+                    Section.Home -> HomeScreen(s)
+                    Section.Store -> LibraryScreen(s)
+                    Section.MyGames -> MyGamesScreen(s)
+                    Section.Downloads -> DownloadsScreen(s)
+                    Section.Settings -> TweaksScreen(s)
                 }
             }
         }
     }
     if (s.pairing) PairDialog(s)
+    if (help) HelpDialog(s) { help = false }
 }
 
-/** A small icon + label pair under the rail logo. */
+/**
+ * QGT's bottom bar, on every page: what's happening now (the running download, a task, or the headset's current
+ * settings when idle; tap for Downloads), the headset's vitals, then ? help and Options.
+ */
+@Composable
+private fun BottomBar(s: AppState, section: Section, go: (Section) -> Unit, onHelp: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(Size.bar).background(Palette.Bar).padding(horizontal = Space.xxl),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.lg),
+    ) {
+        NowBlock(s, Modifier.weight(1f)) { go(Section.Downloads) }
+        Vitals(s)
+        IconPill(QIcons.Help, "Help", onHelp)
+        PillButton("Options", { go(Section.Settings) }, icon = QIcons.Tune, tone = if (section == Section.Settings) Tone.Accent else Tone.Glass)
+    }
+}
+
+@Composable
+private fun NowBlock(s: AppState, modifier: Modifier, onOpen: () -> Unit) {
+    val items = s.queue.items
+    val running = items.firstOrNull { it.state == QState.Running }
+    val waiting = items.filter { it.state == QState.Waiting }
+    // The display rate has no change callback; poll it like Settings does.
+    val rate by produceState(currentRefreshRate(s.ctx)) { while (true) { kotlinx.coroutines.delay(5_000); value = currentRefreshRate(s.ctx) } }
+    Row(
+        modifier.height(Size.control).tap(RoundedCornerShape(Radius.control), onClick = onOpen).padding(end = Space.sm),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md),
+    ) {
+        Text("Now", Modifier.fillMaxHeight().clip(RoundedCornerShape(Radius.control)).background(Palette.Glass).padding(horizontal = Space.lg).wrapContentHeight(), style = MaterialTheme.typography.titleMedium)
+        when {
+            running != null -> {
+                Text(running.title, Modifier.widthIn(max = 280.dp), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                QueueProgress(running, Modifier.width(140.dp).height(6.dp).clip(CircleShape))
+                Text(
+                    listOf(running.stage, running.detail).filter { it.isNotEmpty() }.joinToString(" · "), Modifier.weight(1f, fill = false),
+                    color = Palette.Dim, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                if (waiting.isNotEmpty()) Tag("+${waiting.size} queued")
+            }
+            // Held back by the Wi-Fi or charger rule: the stage says which.
+            waiting.isNotEmpty() -> IconText(QIcons.Download, count(waiting.size, "download") + " waiting · " + waiting.first().stage, Modifier.weight(1f, fill = false), Palette.Dim)
+            s.busy == null -> {
+                IconText(QIcons.Speed, rate?.let { "$it Hz" } ?: "—")
+                IconText(QIcons.Tune, "Preset: " + (matchingPreset { TweakStore.get(s.ctx, it) } ?: "Custom"))
+                IconText(QIcons.Gamepad, MODEL.name, color = Palette.Dim)
+            }
+        }
+        s.busy?.let { label ->
+            CircularProgressIndicator(Modifier.size(16.dp), color = Orange, strokeWidth = 2.dp)
+            Text(label, Modifier.weight(1f, fill = false), color = Palette.Dim, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** ADB (a Connect button while it's down), battery, clock and free space. */
+@Composable
+private fun Vitals(s: AppState) {
+    val ctx = s.ctx
+    // Polled every 30 s: Android sends Compose no cheap change callback for the clock, battery or storage.
+    fun read() = Triple(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date()), batteryPercent(ctx) to isCharging(ctx), s.freeSpace())
+    val now by produceState(read()) { while (true) { kotlinx.coroutines.delay(30_000); value = read() } }
+    val (time, battery, free) = now
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
+        if (s.installer.connected) IconText(QIcons.Usb, "ADB", color = Green)
+        else PillButton("Connect ADB", { connect(s) }, icon = QIcons.Usb, tone = Tone.Glass, enabled = s.busy == null)
+        battery.first?.let { pct ->
+            // Red under 20%, orange under 50%; "+" while charging.
+            IconText(QIcons.Battery, "$pct%" + if (battery.second) "+" else "", color = when { pct < 20 -> Red; pct < 50 -> Orange; else -> Green })
+        }
+        IconText(QIcons.Storage, "${formatSize(free)} free")
+        Text(time, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/** The "?" button: what each part does and the controller shortcuts, plus a way to pair the headset. */
+@Composable
+private fun HelpDialog(s: AppState, onClose: () -> Unit) {
+    @Composable
+    fun Item(icon: ImageVector, title: String, body: String) = Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+        Icon(icon, null, Modifier.padding(top = 2.dp).size(20.dp), tint = Orange)
+        Column {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = Palette.Dim)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onClose, containerColor = Palette.Panel,
+        title = { Text("How QuestRookie works") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                Item(Icons.Default.ShoppingCart, "Store", "Every source's games and apps. Install, Update or Open right from a row; tap a row for its page, trailer and screenshots. The star marks a favourite.")
+                Item(QIcons.ViewList, "List, two columns or icons", "The buttons beside Search change how the Store and My games lay out. Sort, source and filters sit in the row under the header.")
+                Item(QIcons.Gamepad, "My games", "What's installed, what uses the space, and APK files on the headset. Tap a game to tune it: refresh rate, resolution, CPU/GPU level and more, applied each time it starts.")
+                Item(QIcons.Download, "Downloads", "Installs run one after another. The Now bar at the bottom shows the current one; tap it to see the queue.")
+                Item(QIcons.Tune, "Options", "Headset tweaks for every game without its own, presets, automation, sources, the headset's username and app size.")
+                Item(QIcons.Usb, "ADB", "Installing OBB data, uninstalling, backups and tweaks need ADB. Pair once with Wireless debugging and QuestRookie connects to itself, no PC needed.")
+                Item(QIcons.Gamepad, "Controller", "Y switches page. B goes back to the Store. The D-pad or thumbstick moves between buttons; the focused one has an orange ring.")
+            }
+        },
+        confirmButton = { PillButton("Close", onClose, tone = Tone.Accent) },
+        dismissButton = { if (!s.installer.connected) PillButton("Pair headset", { onClose(); s.pairing = true }, icon = QIcons.Usb) },
+    )
+}
+
+/**
+ * Android's own Developer options, never Meta's: Horizon OS hands the bare settings action to its own Settings app, which
+ * has no Wireless debugging. So every try names com.android.settings, most direct first: the page by its Android 12+
+ * name, then its Android 10–11 name, then whatever native page takes the action, and last Android's main Settings page.
+ * Wireless debugging itself has no activity of its own to open. False when none would open.
+ */
+private fun openNativeDeveloperOptions(ctx: android.content.Context): Boolean {
+    val native = "com.android.settings"
+    return listOf(
+        android.content.Intent().setClassName(native, "$native.Settings\$DevelopmentSettingsActivity"),
+        android.content.Intent().setClassName(native, "$native.Settings\$DevelopmentSettingsDashboardActivity"),
+        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).setPackage(native),
+        android.content.Intent().setClassName(native, "$native.Settings"),
+    ).any { runCatching { ctx.startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess }
+}
+
 /** One-time Wireless debugging pairing, so the headset never needs a PC for `adb tcpip`. */
 @Composable
 private fun PairDialog(s: AppState) {
     var port by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = { s.pairing = false },
+        onDismissRequest = { s.pairing = false }, containerColor = Palette.Panel,
         title = { Text("Pair with headset") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("1. Open Developer options and turn on Wireless debugging.\n2. Tap \"Pair device with pairing code\".\n3. Enter the port (after the colon) and the 6-digit code here.")
-                TextButton({
-                    // Horizon OS hands the bare action to Meta's page, which has no Wireless debugging, so ask Android's own Settings first.
-                    val dev = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    runCatching { s.ctx.startActivity(android.content.Intent(dev).setPackage("com.android.settings")) }
-                        .recoverCatching { s.ctx.startActivity(dev) }
-                        .onFailure { s.status = "Enable Developer mode in the Meta Horizon app first" }
-                }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Open Developer options") }
-                OutlinedTextField(port, { port = it.filter(Char::isDigit) }, singleLine = true, label = { Text("Pairing port") })
-                OutlinedTextField(code, { code = it.filter(Char::isDigit) }, singleLine = true, label = { Text("Pairing code") })
+            Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                Text("1. Open Android's Developer options (if it opens on Android's main Settings page: System → Developer options) and turn on Wireless debugging.\n2. Tap \"Pair device with pairing code\".\n3. Enter the port (after the colon) and the 6-digit code here.", color = Palette.Dim)
+                PillButton("Open Android Developer options", {
+                    if (!openNativeDeveloperOptions(s.ctx)) s.status = "Couldn't open Android's Developer options. Enable Developer mode in the Meta Horizon app first"
+                }, icon = QIcons.OpenInNew)
+                InputPill(port, { port = it.filter(Char::isDigit) }, "Pairing port", Modifier.fillMaxWidth())
+                InputPill(code, { code = it.filter(Char::isDigit) }, "Pairing code (6 digits)", Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
-            Button({
+            PillButton("Pair", {
                 s.pairing = false
                 s.task("Pairing") {
                     WirelessAdb(s.ctx).pairWith(port.toInt(), code)
@@ -207,9 +294,8 @@ private fun PairDialog(s: AppState) {
                     s.refreshApps()
                     "Paired and connected"
                 }
-            }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = port.isNotEmpty() && code.length == 6) { Text("Pair") }
+            }, tone = Tone.Accent, enabled = port.isNotEmpty() && code.length == 6)
         },
-        dismissButton = { TextButton({ s.pairing = false }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Cancel") } },
+        dismissButton = { PillButton("Cancel", { s.pairing = false }) },
     )
 }
-

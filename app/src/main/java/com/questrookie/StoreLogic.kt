@@ -30,22 +30,23 @@ fun latestPerTitle(games: List<Game>): List<Game> =
 
 private const val ROW_SIZE = 20
 
-/** The store home's one shelf: the newest titles across every source. */
+/** The store home's one shelf: the newest titles across every source. F-Droid's phone apps never appear here. */
 fun newAndUpdated(games: List<Game>, hideAdult: Boolean) =
-    latestPerTitle(games).filter { !(hideAdult && it.isAdult) }.sortedByDescending { it.updated }.take(ROW_SIZE)
+    latestPerTitle(games).filter { it.source != FDroid.name && !(hideAdult && it.isAdult) }.sortedByDescending { it.updated }.take(ROW_SIZE)
 
 /**
- * The store home's lists under the shelf, one per source, VRSrc's first. [vrsrc] is the source labels VRSrc's games carry;
- * while [vrsrcSetUp] its list stays even when empty, so the home can say it failed to load.
+ * The store home's lists under the shelf, one per source, VRSrc's first and F-Droid's (thousands of phone apps) last.
+ * [vrsrc] is the source labels VRSrc's games carry; while [vrsrcSetUp] its list stays even when empty, so the home can say it failed to load.
  */
 fun sourceLists(games: List<Game>, vrsrc: Set<String>, vrsrcSetUp: Boolean): List<Pair<String, List<Game>>> {
     val bySource = games.groupBy { if (it.source in vrsrc) "VRSrc" else it.source }
     val own = bySource["VRSrc"].orEmpty()
-    return listOfNotNull(("VRSrc" to own).takeIf { vrsrcSetUp || own.isNotEmpty() }) + bySource.filterKeys { it != "VRSrc" }.toList()
+    return listOfNotNull(("VRSrc" to own).takeIf { vrsrcSetUp || own.isNotEmpty() }) +
+        bySource.filterKeys { it != "VRSrc" }.toList().sortedBy { it.first == FDroid.name }
 }
 
-/** Browse all's default order: newest first. */
-fun recommended(games: List<Game>) = games.sortedByDescending { it.updated }
+/** Browse all's default order: titles made for the headset first, F-Droid's phone apps after; newest first within each. */
+fun recommended(games: List<Game>) = games.sortedWith(compareBy<Game> { it.source == FDroid.name }.thenByDescending { it.updated })
 
 /** "Updated 3 weeks ago" from a yyyy-MM-dd date, store-style; the raw text when it doesn't parse, null when there's none. */
 fun updatedAgo(day: String, today: java.time.LocalDate): String? {
@@ -68,3 +69,27 @@ fun count(n: Int, noun: String) = "%,d %s".format(java.util.Locale.US, n, if (n 
 
 /** A temp file name for a title's APK. Catalog keys like "github:owner/repo" hold characters a file name can't. */
 fun apkFileName(pkg: String) = pkg.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".apk"
+
+/** The slate a list row falls back to when its art has no colour to follow. */
+const val ROW_FALLBACK = 0xFF3A414E.toInt()
+
+/**
+ * A list row's background from its art's pixels (ARGB): the average colour weighted toward saturated pixels, so a vivid
+ * cover isn't averaged into grey, scaled to one brightness so white text always reads, and pulled a quarter toward the slate base.
+ */
+fun rowTint(px: IntArray): Int {
+    var r = 0.0; var g = 0.0; var b = 0.0; var w = 0.0
+    for (p in px) {
+        // An icon's transparent corners aren't part of its colour.
+        if (p ushr 24 < 128) continue
+        val pr = p shr 16 and 255; val pg = p shr 8 and 255; val pb = p and 255
+        // Chroma, plus a little so all-grey art still averages to its grey.
+        val k = (maxOf(pr, pg, pb) - minOf(pr, pg, pb) + 8).toDouble()
+        r += pr * k; g += pg * k; b += pb * k; w += k
+    }
+    if (w == 0.0) return ROW_FALLBACK
+    val peak = maxOf(r, g, b) / w
+    if (peak < 24) return ROW_FALLBACK
+    fun ch(sum: Double, shift: Int) = ((sum / w * 110 / peak) * .75 + (ROW_FALLBACK shr shift and 255) * .25).toInt().coerceIn(0, 255) shl shift
+    return (0xFF shl 24) or ch(r, 16) or ch(g, 8) or ch(b, 0)
+}

@@ -12,13 +12,15 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -226,7 +228,8 @@ class DownloadQueue(
 @Composable
 fun QueueProgress(item: QueueItem, modifier: Modifier = Modifier) {
     if (item.state != QState.Running) return
-    if (item.progress < 0) LinearProgressIndicator(modifier) else LinearProgressIndicator({ item.progress }, modifier)
+    if (item.progress < 0) LinearProgressIndicator(modifier, color = Orange, trackColor = Palette.Glass)
+    else LinearProgressIndicator({ item.progress }, modifier, color = Orange, trackColor = Palette.Glass, drawStopIndicator = {}, gapSize = 0.dp)
 }
 
 @Composable
@@ -241,99 +244,98 @@ fun DownloadsScreen(s: AppState) {
         "${formatSize(free)} free",
     ).joinToString(" · ")
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Downloads", summary) {
-            QChip(selected = s.wifiOnly, onClick = { s.chooseWifiOnly(!s.wifiOnly) }, label = { Text("Wi-Fi only") }, modifier = Modifier.focusRing(RoundedCornerShape(8.dp)))
-            QChip(selected = s.chargingOnly, onClick = { s.chooseChargingOnly(!s.chargingOnly) }, label = { Text("Charging only") }, modifier = Modifier.focusRing(RoundedCornerShape(8.dp)))
-            if (failed > 0) FilledTonalButton({ s.queue.retryFailed() }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Retry failed ($failed)") }
-            if (items.size > active) TextButton({ s.queue.clearFinished() }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Clear finished") }
+        TopBar()
+        Toolbar(summary) {
+            ToggleChip("Wi-Fi only", s.wifiOnly, { s.chooseWifiOnly(!s.wifiOnly) })
+            ToggleChip("Charging only", s.chargingOnly, { s.chooseChargingOnly(!s.chargingOnly) })
+            if (failed > 0) PillButton("Retry failed ($failed)", { s.queue.retryFailed() }, icon = Icons.Default.Refresh)
+            if (items.size > active) PillButton("Clear finished", { s.queue.clearFinished() }, icon = Icons.Default.Delete)
         }
         if (items.isEmpty()) EmptyState(
             Icons.AutoMirrored.Filled.List, "Nothing queued",
             "Pick a game in the Store, or an APK in My games → Local files. Installs run here one after another.",
         )
-        else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+        else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.md), contentPadding = PaddingValues(bottom = Space.xxl)) {
             val running = items.firstOrNull { it.state == QState.Running }
             val waiting = items.filter { it.state == QState.Waiting }
             val finished = items.filter { !it.active }
             if (running != null) item(key = "now") { NowRunning(s, running) }
             // Waiting jobs are "up next"; done, failed and cancelled ones are history, newest first.
             if (waiting.isNotEmpty()) {
-                item(key = "next") { QueueHeading("Up next") }
+                item(key = "next") { Heading("Up next") }
                 items(waiting, key = { it.id }) { QueueRow(s, it) }
             }
             if (finished.isNotEmpty()) {
-                item(key = "finished") { QueueHeading("Finished") }
+                item(key = "finished") { Heading("Finished") }
                 items(finished.asReversed(), key = { it.id }) { QueueRow(s, it) }
             }
         }
     }
 }
 
+/** A job's art: an APK's own icon, else the game's store art. */
 @Composable
-private fun QueueHeading(text: String) =
-    Text(text, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun QueueArt(item: QueueItem, modifier: Modifier) =
+    if (item.icon != null) AppArt("q${item.id}", item.title, modifier, item.icon) else GameArt(item.thumb, item.title, modifier, url = item.thumbUrl, icon = item.iconUrl)
 
-/** The job in progress, large: art, stage, a thick bar and Cancel. */
+@Composable
+private fun queueTint(item: QueueItem): Color? =
+    rememberTint(if (item.icon != null) rememberAppIcon("q${item.id}", item.icon) else rememberArt(item.thumb, item.thumbUrl.ifEmpty { item.iconUrl }))
+
+/** The job in progress, large: art, stage, a thick bar and Cancel, on the art's colour. */
 @Composable
 private fun NowRunning(s: AppState, item: QueueItem) {
-    val colors = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp)).padding(24.dp), horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
-        val art = Modifier.fillMaxWidth(.4f).widthIn(max = 300.dp).aspectRatio(16 / 9f).clip(RoundedCornerShape(16.dp))
-        if (item.icon != null) Box(art.background(colors.surfaceContainerHighest), contentAlignment = Alignment.Center) { AppIcon("q${item.id}", 72.dp, item.icon) }
-        else GameArt(item.thumb, item.title, art, url = item.thumbUrl, icon = item.iconUrl)
+    val tint = queueTint(item) ?: Palette.Panel
+    Row(
+        Modifier.fillMaxWidth().height(168.dp).clip(RoundedCornerShape(Radius.sheet))
+            .background(Brush.horizontalGradient(listOf(tint, lerp(tint, Palette.Base, .35f)))),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xxl),
+    ) {
+        QueueArt(item, Modifier.fillMaxHeight().aspectRatio(16 / 9f))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(item.stage.uppercase(), color = colors.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            Text(item.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.stage.uppercase(), color = Orange, style = MaterialTheme.typography.labelLarge)
+            Text(item.title, style = MaterialTheme.typography.headlineSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             QueueProgress(item, Modifier.fillMaxWidth().height(12.dp).clip(CircleShape))
-            Text(listOf(item.subtitle, item.detail).filter { it.isNotEmpty() }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 1)
+            Text(listOf(item.subtitle, item.detail).filter { it.isNotEmpty() }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = .75f), maxLines = 1)
         }
-        OutlinedButton({ s.queue.cancel(item) }, Modifier.height(Size.control).focusRing(RoundedCornerShape(Radius.pill))) { Text("Cancel", color = colors.error) }
+        PillButton("Cancel", { s.queue.cancel(item) }, Modifier.padding(end = Space.xxl), icon = Icons.Default.Close, tone = Tone.Glass)
     }
 }
 
 @Composable
 private fun QueueRow(s: AppState, item: QueueItem) {
-    val colors = MaterialTheme.colorScheme
-    val running = item.state == QState.Running
-    Card(Modifier.glass(), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            val art = Modifier.fillMaxWidth(.3f).widthIn(max = 144.dp).aspectRatio(16 / 9f).clip(MaterialTheme.shapes.small)
-            if (item.icon != null) Box(art.background(colors.surfaceContainerHighest), contentAlignment = Alignment.Center) { AppIcon("q${item.id}", 48.dp, item.icon) }
-            else GameArt(item.thumb, item.title, art, url = item.thumbUrl, icon = item.iconUrl)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(item.title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    when (item.state) {
-                        QState.Waiting -> Pill("Queued")
-                        QState.Running -> Pill("Working", colors.primaryContainer, colors.onPrimaryContainer)
-                        QState.Done -> Pill("Done", Green, Color(0xFF062015))
-                        QState.Failed -> Pill("Failed", colors.error, Color(0xFF2A0606))
-                        QState.Cancelled -> Pill("Cancelled")
-                    }
-                }
-                Text(item.subtitle, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                if (item.state != QState.Waiting) Text(
-                    listOf(item.stage, item.detail).filter { it.isNotEmpty() }.joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    color = if (item.state == QState.Failed) colors.error else colors.onSurface,
-                )
-                else if (item.stage != "Waiting") Text(item.stage, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface)
-                QueueProgress(item, Modifier.fillMaxWidth().padding(top = 4.dp))
-            }
-            when (item.state) {
-                QState.Waiting, QState.Running -> IconButton({ s.queue.cancel(item) }, Modifier.focusRing(CircleShape)) { Icon(Icons.Default.Close, "Cancel") }
-                QState.Failed, QState.Cancelled -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (item.needsPairing) FilledTonalButton({ s.pairing = true }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Pair headset") }
-                    IconButton({ s.queue.retry(item) }, Modifier.focusRing(CircleShape)) { Icon(Icons.Default.Refresh, "Retry") }
-                    IconButton({ s.queue.remove(item) }, Modifier.focusRing(CircleShape)) { Icon(Icons.Default.Delete, "Remove") }
-                }
-                QState.Done -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    item.pkg?.let { FilledTonalButton({ s.launch(it) }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Launch") } }
-                    IconButton({ s.queue.remove(item) }, Modifier.focusRing(CircleShape)) { Icon(Icons.Default.Delete, "Remove") }
-                }
-            }
-        }
+    val (label, color) = when (item.state) {
+        QState.Waiting -> "Queued" to Palette.Dim
+        QState.Running -> "Working" to Orange
+        QState.Done -> "Done" to Green
+        QState.Failed -> "Failed" to Red
+        QState.Cancelled -> "Cancelled" to Palette.Dim
     }
+    // Waiting rows only show a stage when something holds them back (no Wi-Fi, not charging).
+    val stage = if (item.state == QState.Waiting && item.stage == "Waiting") "" else item.stage
+    MediaRow(
+        title = item.title, art = { QueueArt(item, it) }, tint = queueTint(item),
+        stats = listOfNotNull(
+            stage.takeIf { it.isNotEmpty() }?.let { StatItem(if (item.state == QState.Failed) Icons.Default.Warning else QIcons.Download, it, if (item.state == QState.Failed) Red else Palette.Text) },
+            item.detail.takeIf { it.isNotEmpty() }?.let { StatItem(QIcons.Storage, it) },
+        ),
+        detail = item.subtitle, status = label, statusColor = color,
+        actions = {
+            when (item.state) {
+                QState.Waiting, QState.Running -> IconPill(Icons.Default.Close, "Cancel", { s.queue.cancel(item) })
+                QState.Failed, QState.Cancelled -> {
+                    if (item.needsPairing) PillButton("Pair headset", { s.pairing = true }, icon = QIcons.Usb, tone = Tone.Accent)
+                    IconPill(Icons.Default.Refresh, "Retry", { s.queue.retry(item) })
+                    IconPill(Icons.Default.Delete, "Remove", { s.queue.remove(item) })
+                }
+                QState.Done -> {
+                    item.pkg?.let { PillButton("Open", { s.launch(it) }, icon = QIcons.OpenInNew, tone = Tone.Glass) }
+                    IconPill(Icons.Default.Delete, "Remove", { s.queue.remove(item) })
+                }
+            }
+        },
+        footer = { QueueProgress(item, Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp)) },
+    )
 }
 
 /** Foreground service so Android doesn't freeze the process while the browser or a game is in front. */

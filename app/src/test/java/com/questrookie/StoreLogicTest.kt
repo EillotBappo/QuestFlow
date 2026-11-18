@@ -42,9 +42,12 @@ class StoreLogicTest {
         Game(name, "$name v1 ($source)", "pkg.$name", "1", updated, "1.0", popularity = pop, source = source, rating = rating, ratingCount = count)
 
     @Test
-    fun newAndUpdatedIsNewestFirstAcrossSources() {
-        val games = listOf(g("Old", "Mirror", "2025-01-01"), g("New", "Repo", "2026-06-01"), g("Ad (18+)", "Mirror", "2026-12-01"))
-        assertEquals(listOf("New", "Old"), newAndUpdated(games, hideAdult = true).map { it.name })
+    fun newAndUpdatedIsNewestFirstAcrossSourcesWithoutFDroid() {
+        val games = listOf(
+            g("Old", "Mirror", "2025-01-01"), g("New", "Repo", "2026-06-01"), g("Ad (18+)", "Mirror", "2026-12-01"),
+            g("Sq", "SideQuest", "2026-05-01"), g("Fd", "F-Droid", "2026-12-31"),
+        )
+        assertEquals(listOf("New", "Sq", "Old"), newAndUpdated(games, hideAdult = true).map { it.name })
     }
 
     @Test
@@ -56,6 +59,27 @@ class StoreLogicTest {
         assertEquals(listOf("VRSrc" to emptyList<Game>(), "Repo" to listOf(rp)), sourceLists(listOf(rp), vrsrc, vrsrcSetUp = true))
         // Not set up: only the other sources.
         assertEquals(listOf("Repo" to listOf(rp)), sourceLists(listOf(rp), vrsrc, vrsrcSetUp = false))
+        // SideQuest and F-Droid are lists like any other, but F-Droid's thousands of phone apps always come last.
+        val fd = g("Fd", "F-Droid"); val sq = g("Sq", "SideQuest")
+        assertEquals(listOf("VRSrc", "SideQuest", "Repo", "F-Droid"), sourceLists(listOf(fd, sq, mx, rp), vrsrc, vrsrcSetUp = true).map { it.first })
+    }
+
+    @Test
+    fun recommendedPutsFDroidLastNewestFirst() {
+        val games = listOf(g("Fd", "F-Droid", "2026-12-01"), g("Old", "Mirror", "2025-01-01"), g("New", "SideQuest", "2026-06-01"))
+        assertEquals(listOf("New", "Old", "Fd"), recommended(games).map { it.name })
+    }
+
+    @Test
+    fun rowTintFollowsTheVividPixelsAndStaysDark() {
+        val red = 0xFFFF0000.toInt(); val grey = 0xFF808080.toInt()
+        // Mostly grey with some red: the red still wins, dimmed so white text reads on it.
+        val tint = rowTint(IntArray(100) { if (it < 30) red else grey })
+        val r = tint shr 16 and 255; val gr = tint shr 8 and 255; val b = tint and 255
+        assertTrue(r > gr + 20 && r > b + 20)
+        assertTrue(r in 80..130)
+        // Black art has no colour to follow: the slate fallback.
+        assertEquals(ROW_FALLBACK, rowTint(IntArray(16) { 0xFF000000.toInt() }))
     }
 
     @Test

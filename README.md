@@ -1,204 +1,127 @@
-# QuestRookie 🥕
+# QuestRookie
 
-**A free, open-source storefront and manager for Meta Quest headsets.**
+A sideloading store, library manager and headset tuner that runs on the Meta Quest itself. Browse several sources, install games and apps (OBB data included) and tune each game's refresh rate, resolution and CPU/GPU level. After a one-time Wireless debugging pairing, it works without a PC.
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+![Store, list view](docs/screenshots/store.png)
 
-QuestRookie is a companion app that lets you browse, install, manage, and launch games and apps on your Meta Quest (1/2/3/Pro) — with or without Wi-Fi Calling. It aggregates titles from SideQuest, OculusDB, and any custom mirror sources you add, so you can discover and sideload everything in one place.
+## Features
 
----
+### Store
+- **Built-in sources:** TheVRSrc, SideQuest (the free SideQuestRepos indexes) and F-Droid.
+- **Your own sources:** add Rookie-protocol mirrors and any F-Droid-style repo (an `index-v1.json` link) from **Sources**. A source can be removed again.
+- **Store home:** a *New & updated* shelf, then each source's own list.
+- **Browse:** search by name or package.
+  - Sort by Recommended, Name, Popular, Top rated, Recently updated, Largest or Last played.
+  - Filter by source, Installed, Updates or Favourites.
+- **Three layouts:** full-width rows, two columns, or an icon grid.
+- **Install from a row:** every row has Install / Update / Open and a favourite star.
+- **More actions:** select several titles to install at once, *Update all*, and *Surprise me*.
+- **Game page:** description, screenshots, what's new, a YouTube trailer and more titles from the same source. Mirror games get their store text from OculusDB.
+- **Hide 18+:** titles marked 18+ are hidden by default (Options → Hide 18+).
 
-## ✨ Features
+### Downloads
+- **One at a time:** installs run in a queue that survives an app restart. A dropped connection is retried after 15 s, 1 min and 3 min, and the download resumes.
+- **Optional rules:** *Wi-Fi only* and *Charging only*.
+- **Space check:** an install is refused when free space is below twice the game's size.
+- **Install scripts:** a mirror release's `install.txt` is run the way Rookie runs it.
+- **Saves:** a game's saves are backed up before it is updated over ADB.
+- **Without ADB:** APK-only titles install through Android's own installer, which asks to confirm each one. Games with OBB data need ADB.
+- **Always visible:** the bottom bar shows the running download on every page.
 
-- **Game Store** — Browse hundreds of VR games and apps across multiple built-in catalogs (SideQuest, OculusDB) and user-configured mirrors (vrhub, etc.).
-- **Multi-source aggregation** — Add extra mirror sources with a single URL or JSON config. All sources appear side-by-side; if one fails the others still load.
-- **Smart library & search** — Filter by installed / updates / favourites, sort by name, popularity, rating, size, last played, etc.
-- **One-tap install & update** — Install, reinstall, or update any title from within the app. Bulk-update all pending updates at once.
-- **Offline mode** — Works without Wi-Fi Calling; your cached game list stays usable until you refresh.
-- **Wireless ADB** — Connect to your Quest over Wi‑Fi directly from the app (no PC needed).
-- **Package installer** — Install APKs, OBBs, and split packages via USB or wireless.
-- **App management** — Launch, uninstall, cache-clear, force-stop, and view permissions/data for any sideloaded package.
-- **Tweak & tweaklet support** — Apply system tweaks (e.g. 90 Hz on Quest 2) and per-app tweaks at install time.
-- **Shortcuts & home screen widgets** — One-tap shortcuts to launch games or open specific screens from your Quest's home launcher.
-- **Catalogs & mirrors** — Built-in catalogs auto-update; custom mirror sources let you point at your own vrhub-server, VRStore server, or any compatible index.
-- **Favourites & adult filtering** — Mark titles as favourites and optionally hide adult content.
-- **Screenshots & trailers** — View screenshots from OculusDB data; embedded YouTube trailers play directly inside the game detail screen.
-- **Dark theme / Material You** — Polished Material 3 UI with adaptive theming, shimmer loading cards, and focus-friendly navigation (great for keyboard/D-pad).
+### My games
+- **Installed:** your sideloaded apps, sorted by name, size, last played or install date, and filtered to games, apps, updates or hidden apps.
+  - Each app has Open, Update and favourite buttons.
+  - Its menu backs up the APK, OBB and saves to `/sdcard/QuestRookie/Backups/<package>`, disables or enables the app, restores saves, or uninstalls it. Saves are backed up first.
+- **Storage:** APK, OBB and save sizes per app. It also lists OBB and save folders left behind by uninstalled apps, with buttons to back up their saves or remove the OBB.
+- **Local files:** finds APKs on the headset's storage (split APKs and an OBB folder beside them included) and installs them. It also installs from a pasted APK link.
 
----
+### Headset tuning
+- **Per game:** tap a game to choose its own profile: the global tweaks, a preset, or custom values. The profile is applied each time the game starts.
+- **Global tweaks (Options):**
+  - refresh rate, render resolution, foveation, dynamic foveation and CPU/GPU level
+  - recording/cast quality and frame rate
+  - Guardian pause and the proximity sensor
+  - chromatic aberration correction (Quest 1 and 2)
+- **Presets:** Battery saver, Balanced, 120 Hz (on headsets that support it) and Max quality.
+- **Matched to the headset:** options are built for Quest 1, 2, Pro, 3 and 3S. Saved tweaks are re-applied when the app starts after a reboot.
+- **Automation (background service):**
+  - applies a game's tweaks even when it starts from the Quest home
+  - steps the CPU/GPU level down while the headset is hot
+  - switches to Battery saver under 20% battery
+- **Last session:** frame statistics from a game's last session are shown on its row.
 
-## 🚀 Getting Started
+### Headset tools
+- Set the player username.
+- Run a shell command.
+- Turn OS updates off or on.
+- Reset the ADB key.
+- Reboot the headset.
+- **Shortcuts:** a small local web server (port 8765) with a page per app, so the Quest Browser can add sideloaded apps to your library.
+- **App size:** Compact, Medium or Standard.
 
-### 1. Install QuestRookie on your Quest
+### Controller
+- **Y** switches page.
+- **B** goes back to the Store.
+- The D-pad or thumbstick moves between buttons. The focused one has an orange ring.
 
-Download the latest APK from the [Releases page](https://github.com/ethancloete/QuestRookie/releases). Sideload it onto your headset via SideQuest, `adb install`, or by side-loading directly in the app.
+## Screenshots
 
-> **Tip:** If you're new to sideloading, use SideQuest's "Side-load App" feature or run `adb install questrookie.apk` from a computer connected to your Quest over USB.
+| | |
+|---|---|
+| ![Store, two columns](docs/screenshots/store-two-columns.png) | ![Store, icon grid](docs/screenshots/store-icon-grid.png) |
+| ![Game page](docs/screenshots/game-page.png) | ![Installing from a row](docs/screenshots/installing.png) |
+| ![Home](docs/screenshots/home.png) | ![Options](docs/screenshots/options.png) |
 
-### 2. Connect to your headset
+## Setup on the headset
 
-- **Over USB:** Plug in via USB-C. The app auto-detects the device.
-- **Over Wi‑Fi (Wireless ADB):** Enable Developer Mode on your Quest, enable Wireless ADB, then tap "Connect" in QuestRookie's connection screen and follow the pairing flow. No PC needed.
+1. **Turn on developer mode** for the headset in the Meta Horizon phone app.
+2. **Install the APK** over USB from a computer:
+   ```bash
+   adb install -r apk/QuestRookie.apk
+   ```
+3. **Pair once:** in QuestRookie, press **Connect ADB** (or **?** → **Pair headset**).
+   - The pairing dialog opens Android's own Developer options.
+   - Turn on **Wireless debugging** and choose **Pair device with pairing code**.
+   - Enter the port and the 6-digit code.
 
-### 3. Download a game list
+   From then on, QuestRookie connects to the headset's own ADB (`127.0.0.1:5555`) without a PC.
+4. **Optional mirror:** the primary Rookie mirror is read from `Android/data/com.questrookie/files/config.json`. The file holds `baseUri`, a base64 `password`, and optionally `fallbacks` and `apiKey`. Extra mirrors and repos are added in the app under **Sources**.
 
-On first launch you'll see an empty store. Tap **Download game list** to fetch titles from SideQuest, OculusDB, and any configured mirror sources. This may take a minute on slow connections.
+Usage access (for *Last played* and Automation) and storage access (for *Local files*) can be granted over ADB from the app.
 
-Once loaded, browse categories or use search to find what you want.
+## Building
 
-### 4. Install a game
+Needs JDK 17 and the Android SDK (compile SDK 35). The app targets Android 10 (API 29) and up.
 
-1. Tap a game card to open its detail page.
-2. Press **Install**. The download queue handles the rest — APK + OBBs are fetched and installed automatically.
-3. Return to the Store or Library at any time; queued jobs continue in the background.
-
-### 5. Manage your apps
-
-Open the **Library** tab to see all sideloaded titles. You can:
-- Launch, uninstall, cache-clear, or force-stop any app.
-- View package details (permissions, data usage).
-- Apply tweaks at install time for compatible packages.
-
----
-
-## 🔌 Adding Custom Mirror Sources
-
-QuestRookie supports custom mirror sources beyond the built-in catalogs. To add one:
-
-1. Open the Store → tap **⋮** → **Sources**.
-2. Click **Add a source**.
-3. Enter:
-   - **Name:** A label for your source (e.g., `MyServer`).
-   - **Config URL or JSON:** Points to either:
-     - A vrhub-server config at `http://<host>:39457/config.json`
-     - A VRStore-compatible index-v1.json link
-   - **API Key** (optional): If your source requires authentication.
-
-Once added, games from that source appear alongside the built-in catalogs. Sources are independent — if one fails to load, the others still display normally.
-
----
-
-## 🛠️ Developer Mode & Wireless ADB on Quest
-
-To connect wirelessly:
-
-1. Open **Settings** → **Devices** → **Meta Quest**.
-2. Enable **Developer Mode** (you may need to create a developer account at [developer.oculus.com](https://developer.oculus.com)).
-3. Go back and enable **Wireless ADB**.
-4. In QuestRookie, go to the connection screen and tap **Connect over Wi‑Fi**. Follow the on-screen pairing instructions.
-
----
-
-## 📁 Data Storage
-
-QuestRookie stores its game lists, cache, and configuration in:
-/storage/emulated/0/Android/data/com.questrookie/files/
-
-- `games.json` — Cached game list (JSON)
-- `cache/` — Downloaded thumbnails & screenshots
-- `tweaks/` — Per-app tweak configurations
-
-You can back up this directory to preserve your library between installs.
-
----
-
-## ⚙️ Configuration Files
-
-### Config JSON (`config.json`)
-Used when adding a custom mirror source:
-```json
-{
-  "name": "My Mirror",
-  "base_url": "http://192.168.1.50:39457/",
-  "api_key": "",
-  "mirrors": ["http://mirror1.example.com/"]
-}
-Index JSON (index-v1.json)
-Used for VRStore-compatible sources:
-
-json
-{
-  "packages": [
-    {
-      "name": "GameName",
-      "version": "1.0.0",
-      "url": "http://example.com/game.apk"
-    }
-  ]
-}
-```
-🔄 Updates
-QuestRookie checks for updates on the OculusDB catalog and displays an Update badge next to any installed game that has a newer version available. You can:
-
-Update individual games from their detail page.
-Tap Update all in the Store header to update every pending title at once.
-📝 Permissions & Runtime Requests
-QuestRookie requests these permissions at runtime (where applicable):
-
-POST_NOTIFICATIONS — Show install progress / completion notifications.
-READ_PHONE_STATE — Detect headset USB/Wi-Fi connection state.
-INTERNET — Download game lists, assets, and packages.
-
-Key Components
-Component	Purpose
-AppState	Central state holder — games list, queue, favourites, current device
-Catalogs.kt	Defines built-in catalogs (SideQuest, OculusDB) with JSON parsing
-StoreLogic.kt	Core game data model (Game, Details) + filtering/sorting logic
-Installer.kt	Multi-stage install: download APK → push to device → install OBBs → launch
-Queue.kt	Background job queue for parallel downloads and installs
-Tweaks.kt	Applies system tweaks (90Hz on Quest 2, etc.) per-package at install time
-🛠️ Building from Source
-Prerequisites
-Android Studio (latest stable)
-JDK 17+
-Gradle (bundled with Android Studio)
-Steps
-bash
-# Clone the repository
-git clone https://github.com/ethancloete/QuestRookie.git
+```bash
+git clone https://github.com/EillotBappo/QuestRookie.git
 cd QuestRookie
+./gradlew assembleRelease        # or ./build_questrookie.sh
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
 
-# Open in Android Studio and build
-./gradlew assembleDebug    # Debug APK
-./gradlew assembleRelease  # Release APK (needs signing config)
-The generated APK will be at: app/build/outputs/apk/debug/app-debug.apk
+Use the release build: debug builds run Compose interpreted and stall the UI. The release build is signed with the debug key, so it installs over a debug install.
 
-📦 Dependencies
-QuestRookie uses these major libraries:
+Run the unit tests with:
 
-Library	Purpose
-Jetpack Compose	Declarative UI framework
-Material 3 (MaterialComponents)	Theming, components, design tokens
-Kotlin Coroutines	Asynchronous operations
-OkHttp / Kotlinx Serialization	HTTP requests & JSON parsing
-Activity Compose	Activity lifecycle integration
-See app/build.gradle.kts for the full dependency list.
+```bash
+./gradlew testReleaseUnitTest
+```
 
-🤝 Contributing
-Contributions are welcome! Here's how:
+## Project structure
 
-Fork this repository and create a feature branch (git checkout -b feature/my-feature).
-Commit your changes with clear messages.
-Pull request against the main branch.
-Code Style
-Use Kotlin idioms and follow Kotlin coding conventions.
-Compose functions should be small, focused, and testable.
-Add comments for complex logic; inline docs for public APIs.
-📄 License
-QuestRookie is released under the GNU General Public License v3.0. See LICENSE for details.
+- `app/src/main/java/com/questrookie/`
+  - `Ui.kt`: theme and shared components
+  - `MainActivity.kt`: app shell, header, bottom bar, pairing
+  - `Library.kt`: Store
+  - `Device.kt`, `Storage.kt`: My games
+  - `Queue.kt`: Downloads
+  - `Tweaks.kt`, `Headset.kt`: tweaks and Options
+  - `Catalogs.kt`, `Rookie.kt`: sources
+  - `Installer.kt`, `WirelessAdb.kt`, `PackageInstall.kt`: installing
+  - `Automation.kt`, `Shortcuts.kt`
+- `app/src/test/`: unit tests
+- `apk/QuestRookie.apk`: prebuilt release APK
+- `docs/`: design notes and screenshots
 
-Copyright (C) 2025 Ethan Cloete & Contributors
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-🙏 Acknowledgements
-SideQuest — Game catalog source
-OculusDB — Store data (descriptions, screenshots, ratings)
-VRStore — Mirror source compatibility
-vrhub — Mirror source compatibility
-📞 Support & Community
-GitHub Issues: Report bugs or request features
-Discord / Forum: Join the community for help, tips, and discussions. (Link coming soon)
-Made with ❤️ for the VR sideloading community.
+QuestRookie is not affiliated with Meta.
