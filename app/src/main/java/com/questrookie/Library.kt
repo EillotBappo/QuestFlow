@@ -1,42 +1,29 @@
 package com.questrookie
 
 import android.text.format.DateUtils
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed as rowItemsIndexed
 import android.webkit.WebChromeClient
 import android.webkit.WebView
-import androidx.compose.foundation.Image
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.fromHtml
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.lazy.itemsIndexed as rowItemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
@@ -50,8 +37,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -68,10 +62,9 @@ private enum class Filter(val label: String) { Installed("Installed"), Updates("
 
 val Game.sizeLabel get() = sizeMb.toDoubleOrNull()?.let { formatSize((it * 1_048_576).toLong()) } ?: "$sizeMb MB"
 
-// Tighter than the 24dp default so the Library title and every action fit on one line.
-private val HeaderPad = PaddingValues(horizontal = 14.dp)
+/** With more than one source, how many of each source's titles the store home shows before its "See all". */
+private const val HOME_CAP = 12
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LibraryScreen(s: AppState) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -79,9 +72,11 @@ fun LibraryScreen(s: AppState) {
     // null = no filter; the chips toggle, so there's no "All" chip.
     var filter by rememberSaveable { mutableStateOf<Filter?>(null) }
     var source by rememberSaveable { mutableStateOf("All") }
+    var view by rememberSaveable { mutableStateOf(ViewMode.List) }
     var open by remember { mutableStateOf<Game?>(null) }
     var picking by rememberSaveable { mutableStateOf(false) }
     var browsing by rememberSaveable { mutableStateOf(false) }
+    var sourcesOpen by remember { mutableStateOf(false) }
     val picked = remember { mutableStateListOf<String>() }
     fun toggle(g: Game) { if (g.release in picked) picked.remove(g.release) else picked.add(g.release) }
     val games = s.games
@@ -114,12 +109,14 @@ fun LibraryScreen(s: AppState) {
             }
     }
     val updates = remember(games, versions) { games.count { s.stateOf(it) == GameState.Update } }
-    // The store home shows a shelf above each source's list; any search, filter or "See all" switches to the plain grid, and Back returns.
+    // The store home shows a shelf above each source's list; any search, filter, source or "See all" switches to the plain list, and Back returns.
     val home = !browsing && query.isEmpty() && filter == null && source == "All" && !picking
     fun goHome() { browsing = false; query = ""; filter = null; source = "All"; sort = Sort.Recommended; picking = false; picked.clear() }
     BackHandler(enabled = !home) { goHome() }
     val newest = remember(games, s.hideAdult) { newAndUpdated(games, s.hideAdult) }
     val lists = remember(shown) { sourceLists(shown, setOf(s.rookie.label, TheVRSrc.name), s.rookie.mirrors.isNotEmpty()) }
+    // A source list's See all: that source, or everything when the list mixes several (VRSrc's mirror and its catalog).
+    fun seeAll(list: List<Game>) { browsing = true; list.map { it.source }.distinct().singleOrNull()?.let { source = it } }
     // Controllers start on the first game, not the search box, which would open the keyboard.
     val firstCard = remember { FocusRequester() }
     LaunchedEffect(games.isNotEmpty()) { runCatching { firstCard.requestFocus() } }
@@ -128,139 +125,183 @@ fun LibraryScreen(s: AppState) {
     val listAge = if (listTime == 0L) "" else " · list updated " + DateUtils.getRelativeTimeSpanString(listTime).toString().lowercase()
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Store", if (games.isEmpty()) "" else count(shown.size, "title") + listAge) {
-            if (games.isNotEmpty()) SearchField(query, { query = it }, "Search %,d games and apps".format(games.size), Modifier.weight(1f).widthIn(max = 460.dp))
-            if (updates > 0) Button({ s.updateAll() }, Modifier.focusRing(RoundedCornerShape(24.dp)), contentPadding = HeaderPad, enabled = s.busy == null) { Text("Update all ($updates)") }
-            FilledTonalIconButton({ refresh(s) }, Modifier.focusRing(CircleShape), enabled = s.busy == null) { Icon(Icons.Default.Refresh, "Refresh") }
-            // Occasional actions live behind one button, so the header shows what matters at a glance.
-            Box {
-                var more by remember { mutableStateOf(false) }
-                FilledTonalIconButton({ more = true }, Modifier.focusRing(CircleShape)) { Icon(Icons.Default.MoreVert, "More") }
-                var sourcesOpen by remember { mutableStateOf(false) }
-                DropdownMenu(more, { more = false }) {
-                    // StreamFlow's Surprise Me: a random title from whatever the filters show; the home picks among titles you don't have yet.
-                    val pool = if (home) shown.filter { s.stateOf(it) == GameState.NotInstalled }.ifEmpty { shown } else shown
-                    if (pool.isNotEmpty()) DropdownMenuItem({ Text("Surprise me") }, { more = false; open = pool.random() })
-                    DropdownMenuItem({ Text("Sources") }, { more = false; sourcesOpen = true })
-                }
-                if (sourcesOpen) SourcesDialog(s) { sourcesOpen = false }
-            }
+        TopBar {
+            ViewToggle(view) { view = it }
+            if (games.isNotEmpty()) SearchPill(query, { query = it }, "Search %,d games and apps".format(games.size))
         }
-        // Skeleton cards while the built-in lists load from cache, so the page has its shape from the first frame.
+        // Skeleton rows while the built-in lists load from cache, so the page has its shape from the first frame.
         if (games.isEmpty() && s.loadingCatalogs) {
-            LazyVerticalGrid(GridCells.Adaptive(220.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), userScrollEnabled = false) {
-                items(12) { Shimmer(Modifier.fillMaxWidth().aspectRatio(1.25f).clip(RoundedCornerShape(Radius.tile))) }
+            Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
+                repeat(8) { Shimmer(Modifier.fillMaxWidth().height(Size.row).clip(RoundedCornerShape(Radius.row))) }
             }
             return@Column
         }
         if (games.isEmpty()) {
             EmptyState(Icons.Default.Home, "No games yet", "Download the game list to get started.") {
-                Button({ refresh(s) }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = s.busy == null) { Text("Download game list") }
+                PillButton("Download game list", { refresh(s) }, icon = Icons.Default.Refresh, tone = Tone.Accent, enabled = s.busy == null)
             }
             return@Column
         }
-        // Filters tuck away while scrolling down the list and come back on any scroll up, so more games fit.
+        // The toolbar tucks away while scrolling down the list and comes back on any scroll up, so more games fit.
         val grid = rememberLazyGridState()
-        // A new view (home, See all, another filter or search) starts at the top, not wherever the last one was scrolled to.
-        LaunchedEffect(home, query, filter, source, sort) { grid.scrollToItem(0) }
-        AnimatedVisibility(!home && (!grid.canScrollBackward || grid.lastScrolledBackward)) {
-            Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!home) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(::goHome, Modifier.align(Alignment.CenterVertically).focusRing(RoundedCornerShape(Radius.pill))) { Text("← Store") }
-                SortMenu(sort, Sort.entries, { it.label }) { sort = it }
+        // A new view (home, See all, another filter, search or layout) starts at the top, not wherever the last one was scrolled to.
+        LaunchedEffect(home, query, filter, source, sort, view) { grid.scrollToItem(0) }
+        AnimatedVisibility(!grid.canScrollBackward || grid.lastScrolledBackward) {
+            Toolbar(count(shown.size, "title") + listAge) {
+                if (!home) PillButton("Store", ::goHome, icon = Icons.AutoMirrored.Filled.ArrowBack, tone = Tone.Glass)
+                Picker(sort, Sort.entries, { it.label }, icon = QIcons.Sort) { sort = it }
                 // Sources are a dropdown, not a chip each: the list grows with every source added.
-                if (sources.size > 1) SortMenu(source, listOf("All") + sources, { if (it == "All") "All sources" else it }) { source = it }
+                if (sources.size > 1) Picker(source, listOf("All") + sources, { if (it == "All") "All sources" else it }, icon = QIcons.Cloud) { source = it }
                 Filter.entries.forEach { f ->
-                    QChip(
-                        selected = filter == f, onClick = { filter = if (filter == f) null else f },
-                        modifier = Modifier.align(Alignment.CenterVertically).focusRing(RoundedCornerShape(8.dp)),
-                        label = { Text(if (f == Filter.Updates && updates > 0) "${f.label} ($updates)" else f.label) },
-                    )
+                    ToggleChip(if (f == Filter.Updates && updates > 0) "${f.label} ($updates)" else f.label, filter == f, { filter = if (filter == f) null else f })
                 }
-                FilledTonalButton({ picking = !picking; picked.clear() }, Modifier.align(Alignment.CenterVertically).focusRing(RoundedCornerShape(24.dp)), contentPadding = HeaderPad) {
-                    Text(if (picking) "Done selecting" else "Select")
-                }
-                if (picking && picked.isNotEmpty()) Button({
+                ToggleChip(if (picking) "Done selecting" else "Select", picking, { picking = !picking; picked.clear() })
+                if (picking && picked.isNotEmpty()) PillButton("Install (${picked.size})", {
                     val chosen = picked.toList()
                     games.filter { it.release in chosen && s.stateOf(it) != GameState.Installed }.forEach(s::install)
                     picked.clear(); picking = false
-                }, Modifier.align(Alignment.CenterVertically).focusRing(RoundedCornerShape(24.dp)), contentPadding = HeaderPad) { Text("Install (${picked.size})") }
-            }
+                }, icon = QIcons.Download, tone = Tone.Accent)
+                if (updates > 0) PillButton("Update all ($updates)", { s.updateAll() }, icon = QIcons.Sync, tone = Tone.Accent, enabled = s.busy == null)
+                IconPill(Icons.Default.Refresh, "Refresh game list", { refresh(s) }, tone = Tone.Raised, enabled = s.busy == null)
+                // Occasional actions live behind one button.
+                Box {
+                    var more by remember { mutableStateOf(false) }
+                    IconPill(Icons.Default.MoreVert, "More", { more = true }, tone = Tone.Raised)
+                    DropdownMenu(more, { more = false }) {
+                        // StreamFlow's Surprise Me: a random title from whatever the filters show. On the home that's everything, and
+                        // F-Droid's phone apps would win nearly every time, so the home picks among headset titles you don't have yet.
+                        val pool = if (home) shown.filter { it.source != FDroid.name && s.stateOf(it) == GameState.NotInstalled }.ifEmpty { shown } else shown
+                        if (pool.isNotEmpty()) DropdownMenuItem({ Text("Surprise me") }, { more = false; open = pool.random() })
+                        DropdownMenuItem({ Text("Sources") }, { more = false; sourcesOpen = true })
+                    }
+                }
             }
         }
         if (shown.isEmpty()) EmptyState(Icons.Default.Search, "No matches", "Try a different search or filter.")
         else LazyVerticalGrid(
-            GridCells.Adaptive(220.dp), Modifier.weight(1f), state = grid, contentPadding = PaddingValues(bottom = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
+            view.cells(), Modifier.weight(1f), state = grid, contentPadding = PaddingValues(bottom = Space.xxl),
+            horizontalArrangement = Arrangement.spacedBy(Space.md), verticalArrangement = Arrangement.spacedBy(Space.md),
         ) {
             if (home) {
-                // Controllers start on the shelf's first card.
+                // Controllers start on the shelf's first tile.
                 if (newest.isNotEmpty()) item(key = "new", span = { GridItemSpan(maxLineSpan) }) {
-                    ShelfRow(s, "New & updated", newest, Modifier.focusRequester(firstCard), { browsing = true }) { open = it }
+                    Shelf(s, "New & updated", newest, Modifier.focusRequester(firstCard), { browsing = true }) { open = it }
                 }
-                // Each source's own list, VRSrc first. One source needs no heading: it's the whole store.
+                // Each source's own list, VRSrc first, F-Droid last. One source needs no heading: it's the whole store.
                 lists.forEach { (name, list) ->
-                    if (lists.size > 1) item(key = "src-$name", span = { GridItemSpan(maxLineSpan) }) { SourceHeading(s, name, failed = list.isEmpty()) }
-                    itemsIndexed(list, key = { _, g -> "$name/${g.release}" }) { i, g ->
-                        GameCard(s, g, Modifier.staggered(i, g.release), selected = false) { open = g }
+                    val many = lists.size > 1
+                    if (many) item(key = "src-$name", span = { GridItemSpan(maxLineSpan) }) {
+                        SourceHeading(s, name, list.size, failed = list.isEmpty(), onSeeAll = if (list.size > HOME_CAP) {{ seeAll(list) }} else null)
+                    }
+                    itemsIndexed(if (many) list.take(HOME_CAP) else list, key = { _, g -> "$name/${g.release}" }) { i, g ->
+                        StoreItem(s, g, view, Modifier.staggered(i, g.release), selected = false) { open = g }
                     }
                 }
             } else itemsIndexed(shown, key = { _, g -> g.release }) { i, g ->
-                GameCard(s, g, (if (i == 0) Modifier.focusRequester(firstCard) else Modifier).staggered(i, g.release), selected = g.release in picked) {
+                StoreItem(s, g, view, (if (i == 0) Modifier.focusRequester(firstCard) else Modifier).staggered(i, g.release), selected = g.release in picked) {
                     if (picking) toggle(g) else open = g
                 }
             }
         }
     }
     open?.let { GameDetail(s, it, onOpen = { next -> open = next }) { open = null } }
+    if (sourcesOpen) SourcesDialog(s) { sourcesOpen = false }
 }
 
-/** A titled sideways row of cards with "See all", like a store shelf. [firstCard] lands on the row's first card. */
+/** A titled sideways row of tiles with "See all", like a store shelf. [first] lands on the row's first tile. */
 @Composable
-private fun ShelfRow(s: AppState, title: String, games: List<Game>, firstCard: Modifier, onSeeAll: () -> Unit, onOpen: (Game) -> Unit) {
-    Column(Modifier.padding(top = Space.sm)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            TextButton(onSeeAll, Modifier.focusRing(RoundedCornerShape(Radius.pill))) { Text("See all") }
-        }
-        // Vertical padding leaves room for the cards' glow and focus scale, which a lazy row would clip.
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = Space.md)) {
+private fun Shelf(s: AppState, title: String, games: List<Game>, first: Modifier, onSeeAll: () -> Unit, onOpen: (Game) -> Unit) {
+    Column {
+        Heading(title) { PillButton("See all", onSeeAll, tone = Tone.Glass) }
+        // Vertical padding leaves room for the tiles' focus scale, which a lazy row would clip.
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.lg), contentPadding = PaddingValues(vertical = Space.md)) {
             rowItemsIndexed(games, key = { _, g -> g.release }) { i, g ->
-                GameCard(s, g, (if (i == 0) firstCard else Modifier).width(220.dp), selected = false) { onOpen(g) }
+                StoreTile(s, g, (if (i == 0) first else Modifier).width(260.dp), selected = false) { onOpen(g) }
             }
         }
     }
 }
 
-/** A source's heading above its list. Only VRSrc's list is ever empty: it [failed] to load, so it says why. */
+/** A source's heading above its list, with See all when the home shows only part of it. Only VRSrc's list is ever empty: it [failed] to load, so it says why. */
 @Composable
-private fun SourceHeading(s: AppState, name: String, failed: Boolean) {
-    Column(Modifier.padding(top = Space.md)) {
-        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        if (failed) Row(Modifier.padding(vertical = Space.md), verticalAlignment = Alignment.CenterVertically) {
+private fun SourceHeading(s: AppState, name: String, size: Int, failed: Boolean, onSeeAll: (() -> Unit)?) {
+    Column(Modifier.padding(top = Space.sm)) {
+        Heading(name) { if (onSeeAll != null) PillButton("See all %,d".format(size), onSeeAll, tone = Tone.Glass) }
+        if (failed) Row(Modifier.padding(vertical = Space.md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             val error = s.vrsrcError
-            Text("Failed to load" + (error?.let { ": " + friendlyError(it) } ?: ""), Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Failed to load" + (error?.let { ": " + friendlyError(it) } ?: ""), Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = Palette.Dim)
             // The full error, URL included, for pasting into a bug report or chat.
             if (error != null) {
                 val clipboard = LocalClipboardManager.current
-
-                // Existing Copy Error button
-                TextButton({
-                    clipboard.setText(AnnotatedString(error.toString()))
-                    s.status = "Error copied"
-                }, Modifier.focusRing(RoundedCornerShape(Radius.pill))) {
-                    Text("Copy error")
-                }
-
-                Spacer(Modifier.width(Space.sm)) // Visual separation
-
-                // NEW: Targeted Reload Button
-                TextButton({ s.refreshVrsrc() }, Modifier.focusRing(RoundedCornerShape(Radius.pill))) {
-                    Text("Try again", color = MaterialTheme.colorScheme.primary)
-                }
+                PillButton("Copy error", { clipboard.setText(AnnotatedString(error.toString())); s.status = "Error copied" })
+                PillButton("Try again", { s.refreshVrsrc() }, icon = Icons.Default.Refresh, tone = Tone.Accent)
             }
         }
     }
+}
+
+/** A game in the current layout: a row in the list views, a tile in the icon grid. */
+@Composable
+private fun StoreItem(s: AppState, g: Game, view: ViewMode, modifier: Modifier, selected: Boolean, onClick: () -> Unit) =
+    if (view == ViewMode.Icons) StoreTile(s, g, modifier, selected, onClick) else StoreRow(s, g, modifier, view == ViewMode.Columns, selected, onClick)
+
+/** Install / Update / Open, or Cancel while it's queued: what a row's main pill does. */
+@Composable
+private fun StoreAction(s: AppState, g: Game, st: GameState, job: QueueItem?, modifier: Modifier = Modifier) = when {
+    job != null -> PillButton("Cancel", { s.queue.cancel(job) }, modifier, icon = Icons.Default.Close, tone = Tone.Glass)
+    st == GameState.Installed -> PillButton("Open", { s.launch(g.pkg) }, modifier, icon = QIcons.OpenInNew, tone = Tone.Glass)
+    st == GameState.Update -> PillButton("Update", { s.install(g) }, modifier, icon = QIcons.Sync, tone = Tone.Accent)
+    else -> PillButton("Install", { s.install(g) }, modifier, icon = QIcons.Download, tone = Tone.Accent)
+}
+
+private fun stateStat(st: GameState, job: QueueItem?) = when {
+    job != null -> StatItem(QIcons.Download, if (job.state == QState.Waiting) "Queued" else "Installing", Orange)
+    st == GameState.Installed -> StatItem(Icons.Default.Check, "Installed", Green)
+    st == GameState.Update -> StatItem(QIcons.Sync, "Update", Orange)
+    else -> StatItem(QIcons.Download, "Not installed", Palette.Dim)
+}
+
+@Composable
+fun StateTag(st: GameState) {
+    when (st) {
+        GameState.Installed -> Tag("Installed", Green, Color(0xFF062015))
+        GameState.Update -> Tag("Update", Orange, Palette.Ink)
+        GameState.NotInstalled -> {}
+    }
+}
+
+@Composable
+private fun StoreRow(s: AppState, g: Game, modifier: Modifier, compact: Boolean, selected: Boolean, onClick: () -> Unit) {
+    val st = s.stateOf(g)
+    val job = s.queue.active(g.release)
+    MediaRow(
+        title = g.name, art = { GameArt(s, g, it) }, tint = gameTint(s, g), modifier = modifier, onClick = onClick, selected = selected, compact = compact,
+        stats = listOf(StatItem(QIcons.Tag, "v${g.version}"), StatItem(QIcons.Storage, g.sizeLabel), StatItem(QIcons.Cloud, g.source), stateStat(st, job)),
+        status = when {
+            job != null -> if (job.state == QState.Waiting) "Queued" else job.stage
+            g.rating > 0 -> "★ %.1f".format(g.rating)
+            else -> updatedAgo(g.updated, java.time.LocalDate.now()).orEmpty()
+        },
+        statusColor = if (job != null) Orange else Palette.Dim,
+        tags = { if (selected) Tag("Selected", Orange, Palette.Ink) },
+        actions = { StoreAction(s, g, st, job); if (!compact) FavStar(s, g.pkg) },
+        footer = { if (job != null) QueueProgress(job, Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp)) },
+    )
+}
+
+@Composable
+private fun StoreTile(s: AppState, g: Game, modifier: Modifier, selected: Boolean, onClick: () -> Unit) {
+    val job = s.queue.active(g.release)
+    ArtTile(
+        g.name, { GameArt(s, g, it) }, gameTint(s, g), modifier, onClick, selected = selected,
+        subtitle = listOfNotNull(g.source, g.sizeLabel, if (g.rating > 0) "★ %.1f".format(g.rating) else null).joinToString(" · "),
+        badges = {
+            if (selected) Tag("Selected", Orange, Palette.Ink)
+            StateTag(s.stateOf(g))
+            if (job != null) Tag(if (job.state == QState.Waiting) "Queued" else job.stage, Palette.Glass, Orange)
+        },
+        footer = { if (job != null) QueueProgress(job, Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp)) },
+    )
 }
 
 /** Built-in catalogs always refresh; each configured source refreshes on its own, and one failing keeps its last list without hiding the rest. */
@@ -278,6 +319,23 @@ private fun refresh(s: AppState) = s.task("Downloading game list") {
     count(s.games.size, "title") + failed.joinToString("") { " · $it" }
 }
 
+/** One source in the Sources dialog: its name, where it comes from, and a button when it can be removed. */
+@Composable
+private fun SourceLine(name: String, where: String, trailing: @Composable RowScope.() -> Unit = {}) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+        Text(name, style = MaterialTheme.typography.titleSmall)
+        Text(where, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = Palette.Dim, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        trailing()
+    }
+}
+
+/** A field's label over its input, for forms in dialogs. */
+@Composable
+private fun Field(label: String, value: String, onChange: (String) -> Unit, placeholder: String = "") = Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+    Text(label, style = MaterialTheme.typography.labelLarge, color = Palette.Dim)
+    InputPill(value, onChange, placeholder, Modifier.fillMaxWidth())
+}
+
 /** Lists extra sources and adds new ones, e.g. a vrhub-server at http://<pi-ip>:39457/config.json. */
 @Composable
 internal fun SourcesDialog(s: AppState, onClose: () -> Unit) {
@@ -286,29 +344,26 @@ internal fun SourcesDialog(s: AppState, onClose: () -> Unit) {
     var key by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onClose,
+        onDismissRequest = onClose, containerColor = Palette.Panel,
         title = { Text("Sources") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Mirror" + if (s.rookie.mirrors.isEmpty()) " (not set up)" else " · ${s.rookie.baseUri}", style = MaterialTheme.typography.bodyMedium)
-                CATALOGS.forEach { Text("${it.name} · built in", style = MaterialTheme.typography.bodyMedium) }
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                SourceLine("Mirror", if (s.rookie.mirrors.isEmpty()) "not set up" else s.rookie.baseUri)
+                CATALOGS.forEach { SourceLine(it.name, "built in") }
                 (s.catalogs.filterIsInstance<RepoCatalog>().map { it.name to it.url } + s.extras.map { it.label to it.baseUri }).forEach { (label, where) ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("$label · $where", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                        TextButton({ s.removeSource(label) }, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Remove", color = MaterialTheme.colorScheme.error) }
-                    }
+                    SourceLine(label, where) { PillButton("Remove", { s.removeSource(label) }, tone = Tone.Danger) }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(Modifier.padding(vertical = Space.xs), color = Palette.Raised)
                 Text("Add a source", style = MaterialTheme.typography.titleSmall)
                 // Up here, not under the fields: below them it scrolls out of sight on a short window.
-                if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Name, e.g. Pi") })
-                OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Config URL or JSON, or a repo's index-v1.json link") }, placeholder = { Text("http://192.168.1.50:39457/config.json") })
-                OutlinedTextField(key, { key = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("API key (optional)") })
+                if (error.isNotEmpty()) Text(error, color = Red, style = MaterialTheme.typography.bodyMedium)
+                Field("Name", name, { name = it }, "e.g. Pi")
+                Field("Config URL or JSON, or a repo's index-v1.json link", input, { input = it }, "http://192.168.1.50:39457/config.json")
+                Field("API key (optional)", key, { key = it })
             }
         },
         confirmButton = {
-            Button({
+            PillButton("Add", {
                 error = ""
                 s.task("Adding $name") {
                     // A failure stays in the dialog; a snackbar would sit behind it, out of sight.
@@ -316,70 +371,13 @@ internal fun SourcesDialog(s: AppState, onClose: () -> Unit) {
                     onClose()
                     added
                 }
-            }, Modifier.focusRing(RoundedCornerShape(24.dp)), enabled = name.isNotBlank() && input.isNotBlank() && s.busy == null) { Text("Add") }
+            }, tone = Tone.Accent, enabled = name.isNotBlank() && input.isNotBlank() && s.busy == null)
         },
-        dismissButton = { TextButton(onClose, Modifier.focusRing(RoundedCornerShape(24.dp))) { Text("Close") } },
+        dismissButton = { PillButton("Close", onClose) },
     )
 }
 
-@Composable
-fun <T> SortMenu(sort: T, options: List<T>, label: (T) -> String, onSort: (T) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton({ open = true }, Modifier.focusRing(RoundedCornerShape(24.dp)), contentPadding = HeaderPad) { Text(label(sort)); Icon(Icons.Default.ArrowDropDown, null) }
-        DropdownMenu(open, { open = false }) {
-            options.forEach { o ->
-                DropdownMenuItem(
-                    text = { Text(label(o)) }, onClick = { onSort(o); open = false },
-                    trailingIcon = { if (o == sort) Icon(Icons.Default.Check, null) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun StatePill(st: GameState) {
-    when (st) {
-        GameState.Installed -> Pill("Installed", Green, Color(0xFF062015))
-        GameState.Update -> Pill("Update", Orange, Color(0xFF221500))
-        GameState.NotInstalled -> {}
-    }
-}
-
-@Composable
-private fun GameCard(s: AppState, g: Game, modifier: Modifier, selected: Boolean, onClick: () -> Unit) {
-    val job = s.queue.active(g.release)
-    // StreamFlow's image glow: the card casts a soft shadow in its art's colour.
-    val art = rememberArt(s.thumbnail(g), g.thumbUrl.ifEmpty { g.iconUrl })
-    val glow = remember(art) { art?.let(::glowColor) ?: Color.Black }
-    val shape = RoundedCornerShape(Radius.tile)
-    Card(
-        onClick, modifier.focusScale().shadow(14.dp, shape, ambientColor = glow, spotColor = glow).focusRing(shape).glass(shape),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-    ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16 / 9f)) {
-            GameArt(s, g, Modifier.matchParentSize(), iconBias = -.6f)
-            // Launcher style: the art is the tile; name and details sit on a fade at its foot.
-            Box(Modifier.matchParentSize().background(Brush.verticalGradient(.5f to Color.Transparent, 1f to Color.Black.copy(alpha = .85f))))
-            Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Text(g.name, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    listOfNotNull(g.source, g.sizeLabel, if (g.rating > 0) "★ %.1f".format(g.rating) else null).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = .75f), maxLines = 1,
-                )
-            }
-            Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (selected) Pill("Selected", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary)
-                StatePill(s.stateOf(g))
-                if (job != null) Pill(if (job.state == QState.Waiting) "Queued" else job.stage, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
-            }
-            if (job != null) QueueProgress(job, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
-        }
-    }
-}
-
-/** A game's store page, full screen over the Store. Back (or B) closes it; [onOpen] swaps in another game from "More like this". */
+/** A game's store page, full screen over the Store. Back (or B) closes it; [onOpen] swaps in another game from "More from". */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GameDetail(s: AppState, g: Game, onOpen: (Game) -> Unit, onDismiss: () -> Unit) {
@@ -389,7 +387,6 @@ private fun GameDetail(s: AppState, g: Game, onOpen: (Game) -> Unit, onDismiss: 
     var viewing by remember(g) { mutableStateOf<Int?>(null) }
     val st = s.stateOf(g)
     val job = s.queue.active(g.release)
-    val colors = MaterialTheme.colorScheme
     // Mirror games have no icon of their own; OculusDB's square store cover stands in.
     val icon = g.iconUrl.ifEmpty { info?.cover.orEmpty() }
     val more = remember(g, s.games) { latestPerTitle(s.games).filter { it.source == g.source && it.pkg != g.pkg }.sortedByDescending { it.updated }.take(10) }
@@ -397,58 +394,57 @@ private fun GameDetail(s: AppState, g: Game, onOpen: (Game) -> Unit, onDismiss: 
     val primary = remember { FocusRequester() }
     LaunchedEffect(g) { runCatching { primary.requestFocus() } }
     Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = colors.background) { key(g) {
+        Surface(Modifier.fillMaxSize(), color = Palette.Base, contentColor = Palette.Text) { key(g) {
+            val tint = gameTint(s, g) ?: Palette.Panel
             Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = Space.xxxl)) {
                 Box(Modifier.fillMaxWidth().height(340.dp)) {
                     if (trailer) Box(Modifier.matchParentSize().background(Color.Black), contentAlignment = Alignment.Center) {
                         Trailer(g.name, Modifier.fillMaxHeight().aspectRatio(16 / 9f))
                     } else {
                         GameArt(s.thumbnail(g), g.name, Modifier.matchParentSize(), url = g.thumbUrl, icon = icon)
-                        // Fades into the page so the title block reads as part of the art.
-                        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color.Transparent, .5f to Color.Transparent, 1f to colors.background)))
-                        Button(
-                            { trailer = true }, Modifier.align(Alignment.BottomEnd).padding(Space.xxxl).height(Size.control).focusRing(RoundedCornerShape(Radius.pill)),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = .6f), contentColor = Color.White),
-                        ) { Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(Space.xs)); Text("Trailer") }
+                        // Fades into the page so the action strip reads as part of the art.
+                        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color.Transparent, .5f to Color.Transparent, 1f to Palette.Base)))
+                        PillButton("Trailer", { trailer = true }, Modifier.align(Alignment.BottomEnd).padding(Space.xxxl), icon = Icons.Default.PlayArrow, tone = Tone.Glass)
                     }
-                    FilledTonalIconButton(onDismiss, Modifier.align(Alignment.TopStart).padding(Space.lg).focusRing(CircleShape)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                    }
+                    IconPill(Icons.AutoMirrored.Filled.ArrowBack, "Back", onDismiss, Modifier.align(Alignment.TopStart).padding(Space.lg))
                 }
-                Column(Modifier.padding(horizontal = Space.xxxl), verticalArrangement = Arrangement.spacedBy(Space.lg)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
-                        rememberArt(null, icon)?.let {
-                            Image(it, null, Modifier.size(72.dp).clip(RoundedCornerShape(22)).background(colors.surfaceContainerHighest), contentScale = ContentScale.Crop)
-                        }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-                                Text(g.name, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                StatePill(st)
-                            }
-                            val byline = listOf(info?.publisher.orEmpty().ifEmpty { g.source }) + info?.genres.orEmpty().take(3)
-                            Text(byline.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
-                        }
-                        if (job != null) Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-                            OutlinedButton({ s.queue.cancel(job) }, Modifier.height(Size.control).focusRequester(primary).focusRing(RoundedCornerShape(Radius.pill))) { Text("Cancel") }
-                            Text(listOf(job.stage, job.detail).filter { it.isNotEmpty() }.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
-                            QueueProgress(job, Modifier.width(180.dp))
-                        } else Button({ s.install(g) }, Modifier.height(Size.control).focusRequester(primary).focusRing(RoundedCornerShape(Radius.pill))) {
-                            Text(when (st) { GameState.NotInstalled -> "Install"; GameState.Update -> "Update"; GameState.Installed -> "Reinstall" })
-                        }
-                        if (st != GameState.NotInstalled) FilledTonalButton({ s.launch(g.pkg) }, Modifier.height(Size.control).focusRing(RoundedCornerShape(Radius.pill))) { Text("Launch") }
-                        val fav = g.pkg in s.favourites
-                        IconToggleButton(fav, { s.toggleFavourite(g.pkg) }, Modifier.focusRing(CircleShape)) {
-                            Icon(if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder, if (fav) "Unfavourite" else "Favourite", tint = if (fav) colors.primary else colors.onSurfaceVariant)
-                        }
+                // The game's row, large: in its art's colour, with its actions on the right.
+                Row(
+                    Modifier.padding(horizontal = Space.xxxl).fillMaxWidth().clip(RoundedCornerShape(Radius.sheet))
+                        .background(Brush.horizontalGradient(listOf(tint, lerp(tint, Palette.Base, .35f)))).padding(Space.lg),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.lg),
+                ) {
+                    rememberArt(null, icon)?.let {
+                        Image(it, null, Modifier.size(72.dp).clip(RoundedCornerShape(22)).background(Palette.Raised), contentScale = ContentScale.Crop)
                     }
-                    Text(
-                        listOfNotNull(
-                            if (g.rating > 0) "★ %.1f".format(g.rating) + if (g.ratingCount > 0) " (${g.ratingCount})" else "" else null,
-                            g.sizeLabel, "Version ${g.version}", updatedAgo(g.updated, java.time.LocalDate.now()),
-                            if (st == GameState.Update) "You have ${s.versions[s.installedPkg(g)]}" else null,
-                        ).joinToString("  ·  "),
-                        style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                            Text(g.name, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.headlineSmall, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            StateTag(st)
+                        }
+                        val byline = listOf(info?.publisher.orEmpty().ifEmpty { g.source }) + info?.genres.orEmpty().take(3)
+                        Text(byline.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = .75f))
+                    }
+                    if (job != null) Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                        PillButton("Cancel", { s.queue.cancel(job) }, Modifier.focusRequester(primary), icon = Icons.Default.Close, tone = Tone.Glass)
+                        Text(listOf(job.stage, job.detail).filter { it.isNotEmpty() }.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = .75f))
+                        QueueProgress(job, Modifier.width(180.dp))
+                    } else PillButton(
+                        when (st) { GameState.NotInstalled -> "Install"; GameState.Update -> "Update"; GameState.Installed -> "Reinstall" },
+                        { s.install(g) }, Modifier.focusRequester(primary), icon = if (st == GameState.Update) QIcons.Sync else QIcons.Download, tone = Tone.Accent,
                     )
+                    if (st != GameState.NotInstalled) PillButton("Open", { s.launch(g.pkg) }, icon = QIcons.OpenInNew, tone = Tone.Glass)
+                    FavStar(s, g.pkg)
+                }
+                Column(Modifier.padding(horizontal = Space.xxxl).padding(top = Space.lg), verticalArrangement = Arrangement.spacedBy(Space.lg)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.xl), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
+                        if (g.rating > 0) IconText(QIcons.Star, "%.1f".format(g.rating) + if (g.ratingCount > 0) " (${g.ratingCount})" else "", style = MaterialTheme.typography.bodyLarge)
+                        IconText(QIcons.Storage, g.sizeLabel, style = MaterialTheme.typography.bodyLarge)
+                        IconText(QIcons.Tag, "Version ${g.version}", style = MaterialTheme.typography.bodyLarge)
+                        updatedAgo(g.updated, java.time.LocalDate.now())?.let { IconText(QIcons.Schedule, it, style = MaterialTheme.typography.bodyLarge) }
+                        IconText(QIcons.Cloud, g.source, style = MaterialTheme.typography.bodyLarge)
+                        if (st == GameState.Update) IconText(QIcons.Sync, "You have ${s.versions[s.installedPkg(g)]}", color = Orange, style = MaterialTheme.typography.bodyLarge)
+                    }
                     info?.let { d ->
                         if (d.summary.isNotEmpty() || d.description.isNotEmpty()) PageSection("About") {
                             if (d.summary.isNotEmpty() && d.summary != d.description) Text(d.summary, style = MaterialTheme.typography.bodyLarge)
@@ -458,24 +454,24 @@ private fun GameDetail(s: AppState, g: Game, onOpen: (Game) -> Unit, onDismiss: 
                         if (d.whatsNew.isNotEmpty()) PageSection("What's new") { ExpandableText(AnnotatedString(d.whatsNew)) }
                     }
                     if (more.isNotEmpty()) PageSection("More from ${g.source}", wide = true) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = Space.md)) {
-                            rowItemsIndexed(more, key = { _, m -> m.release }) { _, m -> GameCard(s, m, Modifier.width(200.dp), selected = false) { onOpen(m) } }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.lg), contentPadding = PaddingValues(vertical = Space.md)) {
+                            rowItemsIndexed(more, key = { _, m -> m.release }) { _, m -> StoreTile(s, m, Modifier.width(240.dp), selected = false) { onOpen(m) } }
                         }
                     }
-                    Text("Package ${g.pkg.removePrefix("github:")} · ${g.release}", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                    Text("Package ${g.pkg.removePrefix("github:")} · ${g.release}", style = MaterialTheme.typography.labelSmall, color = Palette.Dim)
                 }
             }
         } }
     }
     val shots = info?.screenshots.orEmpty()
-    viewing?.let { start -> ScreenshotViewer(s, shots, start) { viewing = null } }
+    viewing?.let { start -> ScreenshotViewer(shots, start) { viewing = null } }
 }
 
-/** A heading and its content, the shape every block on a game page shares. Text stays readable-width; [wide] rows of cards use it all. */
+/** A heading and its content, the shape every block on a game page shares. Text stays readable-width; [wide] rows of tiles use it all. */
 @Composable
 private fun PageSection(title: String, wide: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Column((if (wide) Modifier.fillMaxWidth() else Modifier.widthIn(max = 960.dp)).padding(top = Space.sm), verticalArrangement = Arrangement.spacedBy(Space.sm)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.titleLarge)
         content()
     }
 }
@@ -489,10 +485,10 @@ private fun ExpandableText(text: AnnotatedString) {
     var more by remember(text) { mutableStateOf(false) }
     var overflows by remember(text) { mutableStateOf(false) }
     Text(
-        text, Modifier.clickable { more = !more }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        text, Modifier.clickable { more = !more }, style = MaterialTheme.typography.bodyMedium, color = Palette.Dim,
         maxLines = if (more) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis, onTextLayout = { if (!more) overflows = it.hasVisualOverflow },
     )
-    if (overflows || more) TextButton({ more = !more }, Modifier.focusRing(RoundedCornerShape(Radius.pill))) { Text(if (more) "Less" else "More") }
+    if (overflows || more) PillButton(if (more) "Less" else "More", { more = !more }, tone = Tone.Glass)
 }
 
 /** A sideways strip at a fixed height, each shot at its own shape (phone screenshots are tall, VR ones wide). */
@@ -502,8 +498,7 @@ private fun Screenshots(urls: List<String>, onOpen: (Int) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
         urls.forEachIndexed { i, url ->
             val img = rememberArt(null, url)
-            val shape = RoundedCornerShape(Radius.chip)
-            val m = Modifier.height(180.dp).clip(shape).focusRing(shape).clickable { onOpen(i) }
+            val m = Modifier.height(180.dp).tap(RoundedCornerShape(Radius.tile)) { onOpen(i) }
             if (img == null) Shimmer(m.aspectRatio(9 / 16f))
             else Image(img, "Screenshot ${i + 1}", m.aspectRatio(img.width.toFloat() / img.height), contentScale = ContentScale.Crop)
         }
@@ -513,7 +508,7 @@ private fun Screenshots(urls: List<String>, onOpen: (Int) -> Unit) {
 /** Full-screen screenshots; swipe or use the D-pad between them, Back closes. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ScreenshotViewer(s: AppState, urls: List<String>, start: Int, onClose: () -> Unit) {
+private fun ScreenshotViewer(urls: List<String>, start: Int, onClose: () -> Unit) {
     Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false)) {
         val pager = rememberPagerState(start) { urls.size }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .92f))) {
@@ -521,12 +516,12 @@ private fun ScreenshotViewer(s: AppState, urls: List<String>, start: Int, onClos
                 val img = rememberArt(null, urls[i], maxWidth = 1600)
                 // Bottom gap keeps the page counter off the image.
                 Box(Modifier.fillMaxSize().padding(start = Space.xxl, top = Space.xxl, end = Space.xxl, bottom = 56.dp), contentAlignment = Alignment.Center) {
-                    if (img == null) CircularProgressIndicator()
+                    if (img == null) CircularProgressIndicator(color = Orange)
                     else Image(img, "Screenshot ${i + 1}", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 }
             }
-            Text("${pager.currentPage + 1} / ${urls.size}", Modifier.align(Alignment.BottomCenter).padding(Space.lg), color = Color.White)
-            IconButton(onClose, Modifier.align(Alignment.TopEnd).padding(Space.lg).focusRing(CircleShape)) { Icon(Icons.Default.Close, "Close", tint = Color.White) }
+            Text("${pager.currentPage + 1} / ${urls.size}", Modifier.align(Alignment.BottomCenter).padding(Space.lg), color = Color.White, style = MaterialTheme.typography.titleMedium)
+            IconPill(Icons.Default.Close, "Close", onClose, Modifier.align(Alignment.TopEnd).padding(Space.lg))
         }
     }
 }
