@@ -11,8 +11,8 @@ android {
         applicationId = "com.questflow"
         minSdk = 29
         targetSdk = 32
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "1.0"
     }
     buildFeatures { compose = true }
     // Release = not debuggable: Compose runs compiled instead of in the interpreter, which a debug build forces and which

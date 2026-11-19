@@ -457,9 +457,9 @@ fun ArtTile(
     }
 }
 
-/** A titled block on a plain slate panel: Home's cards, every Options group. */
+/** A titled block on a plain slate panel: Home's cards, every Options group. [hintLines] reserves that many lines for the hint, so a grid of panels with short and long hints lines up. */
 @Composable
-fun Panel(title: String, modifier: Modifier = Modifier, hint: String = "", icon: ImageVector? = null, content: @Composable ColumnScope.() -> Unit) {
+fun Panel(title: String, modifier: Modifier = Modifier, hint: String = "", icon: ImageVector? = null, hintLines: Int = 1, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.card)).background(Palette.Panel).padding(Space.lg),
         verticalArrangement = Arrangement.spacedBy(Space.sm),
@@ -468,7 +468,7 @@ fun Panel(title: String, modifier: Modifier = Modifier, hint: String = "", icon:
             icon?.let { Icon(it, null, Modifier.size(20.dp), tint = Orange) }
             Text(title, style = MaterialTheme.typography.titleMedium)
         }
-        if (hint.isNotEmpty()) Text(hint, style = MaterialTheme.typography.bodySmall, color = Palette.Dim)
+        if (hint.isNotEmpty()) Text(hint, style = MaterialTheme.typography.bodySmall, color = Palette.Dim, minLines = hintLines)
         content()
     }
 }
