@@ -33,8 +33,6 @@ QuestFlow was called QuestRookie. The app's package id changed to `com.questflow
 - **Game page:** description, screenshots, what's new, a YouTube trailer and more titles from the same source. Mirror games get their store text from OculusDB.
 - **Hide 18+:** titles marked 18+ are hidden by default (Options → Hide 18+).
 
-![Game page](docs/screenshots/game-page.png)
-
 ### Downloads
 - **One at a time:** installs run in a queue that survives an app restart. A dropped connection is retried after 15 s, 1 min and 3 min, and the download resumes.
 - **Optional rules:** *Wi-Fi only* and *Charging only*.
