@@ -5,10 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "com.questrookie"
+    namespace = "com.questflow"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.questrookie"
+        applicationId = "com.questflow"
         minSdk = 29
         targetSdk = 32
         versionCode = 1

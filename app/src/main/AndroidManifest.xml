@@ -14,7 +14,7 @@
     <!-- APK-only installs without ADB, through Android's own installer (it asks the user to confirm). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
-        android:label="QuestRookie"
+        android:label="QuestFlow"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask">
@@ -27,7 +27,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="questrookie" />
+                <data android:scheme="questflow" />
             </intent-filter>
         </activity>
         <service android:name=".KeepAliveService" android:exported="false" />

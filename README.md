@@ -1,23 +1,39 @@
-# QuestRookie
+# QuestFlow
 
 A sideloading store, library manager and headset tuner that runs on the Meta Quest itself. Browse several sources, install games and apps (OBB data included) and tune each game's refresh rate, resolution and CPU/GPU level. After a one-time Wireless debugging pairing, it works without a PC.
 
+QuestFlow was called QuestRookie. The app's package id changed to `com.questflow`, so it installs beside an old QuestRookie build instead of updating it.
+
 ![Store, list view](docs/screenshots/store.png)
+
+## Status
+
+- **VRSrc: waiting for developer access.** The VRSrc source needs an access key from its operators. We are waiting for developer access, and until it arrives VRSrc's games do not load, so they are missing from the Store.
+- **SideQuest and F-Droid work** without any key.
+- **Not yet tested on a headset.** The screenshots here are from an Android emulator at Quest panel size. The game-tuning dialog, the trailer player and everything that needs a real headset's ADB have not been checked on a device.
 
 ## Features
 
 ### Store
-- **Built-in sources:** TheVRSrc, SideQuest (the free SideQuestRepos indexes) and F-Droid.
+
+![Store, two columns](docs/screenshots/store-two-columns.png)
+
+- **Built-in sources:** TheVRSrc (see Status), SideQuest (the free SideQuestRepos indexes) and F-Droid.
 - **Your own sources:** add Rookie-protocol mirrors and any F-Droid-style repo (an `index-v1.json` link) from **Sources**. A source can be removed again.
 - **Store home:** a *New & updated* shelf, then each source's own list.
 - **Browse:** search by name or package.
   - Sort by Recommended, Name, Popular, Top rated, Recently updated, Largest or Last played.
   - Filter by source, Installed, Updates or Favourites.
 - **Three layouts:** full-width rows, two columns, or an icon grid.
+
+![Store, icon grid](docs/screenshots/store-icon-grid.png)
+
 - **Install from a row:** every row has Install / Update / Open and a favourite star.
 - **More actions:** select several titles to install at once, *Update all*, and *Surprise me*.
 - **Game page:** description, screenshots, what's new, a YouTube trailer and more titles from the same source. Mirror games get their store text from OculusDB.
 - **Hide 18+:** titles marked 18+ are hidden by default (Options → Hide 18+).
+
+![Game page](docs/screenshots/game-page.png)
 
 ### Downloads
 - **One at a time:** installs run in a queue that survives an app restart. A dropped connection is retried after 15 s, 1 min and 3 min, and the download resumes.
@@ -31,24 +47,34 @@ A sideloading store, library manager and headset tuner that runs on the Meta Que
 ### My games
 - **Installed:** your sideloaded apps, sorted by name, size, last played or install date, and filtered to games, apps, updates or hidden apps.
   - Each app has Open, Update and favourite buttons.
-  - Its menu backs up the APK, OBB and saves to `/sdcard/QuestRookie/Backups/<package>`, disables or enables the app, restores saves, or uninstalls it. Saves are backed up first.
+  - Its menu backs up the APK, OBB and saves to `/sdcard/QuestFlow/Backups/<package>`, disables or enables the app, restores saves, or uninstalls it. Saves are backed up first.
 - **Storage:** APK, OBB and save sizes per app. It also lists OBB and save folders left behind by uninstalled apps, with buttons to back up their saves or remove the OBB.
 - **Local files:** finds APKs on the headset's storage (split APKs and an OBB folder beside them included) and installs them. It also installs from a pasted APK link.
+- **Captures:** the headset's screenshots and recordings (`Oculus/Screenshots` and `Oculus/VideoShots`). View one full screen, copy it to the Download folder, or delete it.
+
+![Captures](docs/screenshots/captures.png)
 
 ### Headset tuning
+
+![Options](docs/screenshots/options.png)
+
 - **Per game:** tap a game to choose its own profile: the global tweaks, a preset, or custom values. The profile is applied each time the game starts.
 - **Global tweaks (Options):**
   - refresh rate, render resolution, foveation, dynamic foveation and CPU/GPU level
   - recording/cast quality and frame rate
   - Guardian pause and the proximity sensor
   - chromatic aberration correction (Quest 1 and 2)
+  - **performance overlay:** switches OVR Metrics Tool's overlay on or off, globally or per game. OVR Metrics Tool must be installed from the Meta Horizon Store, and you pick which stats it shows in that app.
 - **Presets:** Battery saver, Balanced, 120 Hz (on headsets that support it) and Max quality.
 - **Matched to the headset:** options are built for Quest 1, 2, Pro, 3 and 3S. Saved tweaks are re-applied when the app starts after a reboot.
 - **Automation (background service):**
   - applies a game's tweaks even when it starts from the Quest home
   - steps the CPU/GPU level down while the headset is hot
   - switches to Battery saver under 20% battery
+  - optionally copies a game's saves to `/sdcard/QuestFlow/Backups/saves` each time you stop playing it (off by default; each backup replaces the one before)
 - **Last session:** frame statistics from a game's last session are shown on its row.
+
+![Automation and headset tools](docs/screenshots/automation.png)
 
 ### Headset tools
 - Set the player username.
@@ -59,44 +85,44 @@ A sideloading store, library manager and headset tuner that runs on the Meta Que
 - **Shortcuts:** a small local web server (port 8765) with a page per app, so the Quest Browser can add sideloaded apps to your library.
 - **App size:** Compact, Medium or Standard.
 
+### Home
+
+![Home](docs/screenshots/home.png)
+
+Battery, heat and refresh rate, the performance presets, storage, the ADB connection and the last three games you played.
+
 ### Controller
 - **Y** switches page.
 - **B** goes back to the Store.
 - The D-pad or thumbstick moves between buttons. The focused one has an orange ring.
-
-## Screenshots
-
-| | |
-|---|---|
-| ![Store, two columns](docs/screenshots/store-two-columns.png) | ![Store, icon grid](docs/screenshots/store-icon-grid.png) |
-| ![Game page](docs/screenshots/game-page.png) | ![Installing from a row](docs/screenshots/installing.png) |
-| ![Home](docs/screenshots/home.png) | ![Options](docs/screenshots/options.png) |
 
 ## Setup on the headset
 
 1. **Turn on developer mode** for the headset in the Meta Horizon phone app.
 2. **Install the APK** over USB from a computer:
    ```bash
-   adb install -r apk/QuestRookie.apk
+   adb install -r apk/QuestFlow.apk
    ```
-3. **Pair once:** in QuestRookie, press **Connect ADB** (or **?** → **Pair headset**).
+3. **Pair once:** in QuestFlow, press **Connect ADB** (or **?** → **Pair headset**).
    - The pairing dialog opens Android's own Developer options.
    - Turn on **Wireless debugging** and choose **Pair device with pairing code**.
    - Enter the port and the 6-digit code.
 
-   From then on, QuestRookie connects to the headset's own ADB (`127.0.0.1:5555`) without a PC.
-4. **Optional mirror:** the primary Rookie mirror is read from `Android/data/com.questrookie/files/config.json`. The file holds `baseUri`, a base64 `password`, and optionally `fallbacks` and `apiKey`. Extra mirrors and repos are added in the app under **Sources**.
+   From then on, QuestFlow connects to the headset's own ADB (`127.0.0.1:5555`) without a PC.
 
-Usage access (for *Last played* and Automation) and storage access (for *Local files*) can be granted over ADB from the app.
+   ![Pairing](docs/screenshots/pairing.png)
+4. **Optional mirror:** the primary Rookie mirror is read from `Android/data/com.questflow/files/config.json`. The file holds `baseUri`, a base64 `password`, and optionally `fallbacks` and `apiKey`. Extra mirrors and repos are added in the app under **Sources**.
+
+Usage access (for *Last played* and Automation) and storage access (for *Local files* and *Captures*) can be granted over ADB from the app.
 
 ## Building
 
 Needs JDK 17 and the Android SDK (compile SDK 35). The app targets Android 10 (API 29) and up.
 
 ```bash
-git clone https://github.com/EillotBappo/QuestRookie.git
-cd QuestRookie
-./gradlew assembleRelease        # or ./build_questrookie.sh
+git clone https://github.com/EillotBappo/QuestFlow.git
+cd QuestFlow
+./gradlew assembleRelease        # or ./build_questflow.sh
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -110,18 +136,18 @@ Run the unit tests with:
 
 ## Project structure
 
-- `app/src/main/java/com/questrookie/`
+- `app/src/main/java/com/questflow/`
   - `Ui.kt`: theme and shared components
   - `MainActivity.kt`: app shell, header, bottom bar, pairing
   - `Library.kt`: Store
-  - `Device.kt`, `Storage.kt`: My games
+  - `Device.kt`, `Storage.kt`, `Captures.kt`: My games
   - `Queue.kt`: Downloads
   - `Tweaks.kt`, `Headset.kt`: tweaks and Options
   - `Catalogs.kt`, `Rookie.kt`: sources
   - `Installer.kt`, `WirelessAdb.kt`, `PackageInstall.kt`: installing
   - `Automation.kt`, `Shortcuts.kt`
 - `app/src/test/`: unit tests
-- `apk/QuestRookie.apk`: prebuilt release APK
+- `apk/QuestFlow.apk`: prebuilt release APK
 - `docs/`: design notes and screenshots
 
-QuestRookie is not affiliated with Meta.
+QuestFlow is not affiliated with Meta.
