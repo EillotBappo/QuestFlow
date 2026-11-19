@@ -164,18 +164,19 @@ fun TweaksScreen(s: AppState) {
             // Tweaks go over ADB, so this stays up here instead of a banner that eats the list's space.
             if (!s.installer.connected) PillButton("Connect ADB", { connect(s) }, icon = QIcons.Usb, tone = Tone.Accent)
         }
-        // Staggered: panels differ a lot in height, and a plain grid leaves a hole beside every short one.
-        // Headset tweaks first (the preset above drives them), then the app's own settings.
+        // Headset tweaks first (the preset above drives them): cards of one height, so they sit in even rows.
+        // Then automation and the app's own settings. Those panels differ a lot in height; the staggered grid packs each
+        // into the shortest column, so a tall one (Automation) never leaves a hole beside it.
         LazyVerticalStaggeredGrid(
             StaggeredGridCells.Adaptive(340.dp), Modifier.weight(1f), contentPadding = PaddingValues(bottom = Space.xxl),
             horizontalArrangement = Arrangement.spacedBy(Space.lg), verticalItemSpacing = Space.lg,
         ) {
             item(key = "h-perf", span = StaggeredGridItemSpan.FullLine) { Heading("Headset performance") }
             items(TWEAKS, key = { it.key }) { t -> TweakCard(s, t, values[t.key].orEmpty()) { values[t.key] = it } }
+            item(key = "h-app", span = StaggeredGridItemSpan.FullLine) { Heading("Automation, app and headset") }
             item(key = "automation") { AutomationCard(s) }
-            item(key = "h-app", span = StaggeredGridItemSpan.FullLine) { Heading("App and headset") }
-            item(key = "sources") { SourcesCard(s) }
             item(key = "headset") { HeadsetCard(s) }
+            item(key = "sources") { SourcesCard(s) }
             item(key = "content") { ContentCard(s) }
             item(key = "uisize") { UiSizeCard(s) }
         }
@@ -308,7 +309,8 @@ private fun UiSizeCard(s: AppState) {
 
 @Composable
 private fun TweakCard(s: AppState, t: Tweak, value: String, onChange: (String) -> Unit) {
-    Panel(t.label, hint = t.hint) {
+    // Three lines fit the longest hint at the usual three columns, so every tweak card is the same height and the grid has no ragged rows.
+    Panel(t.label, hint = t.hint, hintLines = 3) {
         DropPill(t.options, value, Modifier.fillMaxWidth(), enabled = s.busy == null) { v ->
             val label = t.options.first { it.second == v }.first
             s.task("Applying ${t.label}") {
