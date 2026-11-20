@@ -13,13 +13,29 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- APK-only installs without ADB, through Android's own installer (it asks the user to confirm). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Passthrough home (HomeXrActivity), what Meta's Spatial SDK samples declare for a passthrough scene with hands and
+         controllers. Every feature is optional: the app still installs, and runs as a 2D panel, on anything. -->
+    <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" />
+    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
+    <uses-feature android:name="oculus.software.handtracking" android:required="false" />
+    <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
+    <uses-feature android:name="com.oculus.feature.RENDER_MODEL" android:required="false" />
+    <uses-permission android:name="com.oculus.permission.RENDER_MODEL" />
     <application
         android:label="QuestFlow"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
+        <!-- For HomeXrActivity, where Meta's samples put them. Their com.oculus.supportedDevices list is left out: it names
+             Quest 2, Pro and 3 only, and this app also runs on Quest 1 and 3S. -->
+        <meta-data android:name="com.oculus.handtracking.version" android:value="V2.0" />
+        <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
+        <!-- Not required: Android 12+ refuses to install an app that requires a native library the device lacks. -->
+        <uses-native-library android:name="libossdk.oculus.so" android:required="false" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+                <!-- With an immersive activity in the app, Horizon OS is told which one is the panel (Meta's HybridSample). -->
+                <category android:name="com.oculus.intent.category.2D" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!-- Opened by the web shortcut in web/ (see Shortcuts.kt) -->
@@ -30,6 +46,23 @@
                 <data android:scheme="questflow" />
             </intent-filter>
         </activity>
+        <!-- Passthrough home (HomeXr.kt): immersive, so it carries Horizon OS's VR category. Its own process, so a crash in
+             the Spatial SDK's native runtime can't take the store, the downloads or the tweak service with it. Not a
+             launcher: MainActivity opens it. configChanges as in Meta's samples, so the scene is never recreated. -->
+        <activity
+            android:name=".HomeXrActivity"
+            android:process=":xr"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <!-- The SDK's input module declares this service without a process; pinned here so no SDK code runs in the main one. -->
+        <service android:name="com.meta.spatial.channels.ChannelBrokerService" android:process=":xr" />
         <service android:name=".KeepAliveService" android:exported="false" />
         <receiver android:name=".PackageInstall$Receiver" android:exported="false" />
     </application>

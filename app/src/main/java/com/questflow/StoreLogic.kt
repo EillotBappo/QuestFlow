@@ -48,6 +48,10 @@ fun sourceLists(games: List<Game>, vrsrc: Set<String>, vrsrcSetUp: Boolean): Lis
 /** Browse all's default order: titles made for the headset first, F-Droid's phone apps after; newest first within each. */
 fun recommended(games: List<Game>) = games.sortedWith(compareBy<Game> { it.source == FDroid.name }.thenByDescending { it.updated })
 
+/** Passthrough home's order: the installed games, favourites first, then the most recently played. Ties keep [apps]' order. */
+fun homeOrder(apps: List<AppInfo>, favourites: Set<String>, lastPlayed: Map<String, Long>) =
+    apps.filter { it.isGame }.sortedWith(compareByDescending<AppInfo> { it.pkg in favourites }.thenByDescending { lastPlayed[it.pkg] ?: 0L })
+
 /** "Updated 3 weeks ago" from a yyyy-MM-dd date, store-style; the raw text when it doesn't parse, null when there's none. */
 fun updatedAgo(day: String, today: java.time.LocalDate): String? {
     if (day.isBlank()) return null

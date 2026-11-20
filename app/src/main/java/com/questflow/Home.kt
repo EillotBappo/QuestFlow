@@ -8,13 +8,18 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 /** At-a-glance headset state plus what people do most: recent games, presets, storage and connection. */
 @Composable
 fun HomeScreen(s: AppState) {
+    val ctx = LocalContext.current
     Column(Modifier.fillMaxSize()) {
-        TopBar()
+        // The immersive library (HomeXr.kt): the installed games floating in the room.
+        TopBar {
+            PillButton("Passthrough home", { if (!openPassthroughHome(ctx)) s.status = "Passthrough home needs a Quest 2 or later" }, icon = QIcons.OpenInNew, tone = Tone.Glass)
+        }
         // Staggered: the panels differ a lot in height.
         LazyVerticalStaggeredGrid(
             StaggeredGridCells.Adaptive(340.dp), Modifier.weight(1f), contentPadding = PaddingValues(bottom = Space.xxl),

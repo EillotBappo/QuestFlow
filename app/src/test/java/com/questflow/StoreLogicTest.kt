@@ -110,6 +110,14 @@ class StoreLogicTest {
     }
 
     @Test
+    fun passthroughHomeListsGamesFavouritesFirstThenLastPlayed() {
+        fun app(pkg: String, game: Boolean = true) = AppInfo(pkg, pkg, "1", 1, emptyList(), 0, true, game, 0)
+        val apps = listOf(app("a"), app("b"), app("c"), app("d"), app("tool", game = false))
+        // "d" is a favourite, "c" was played after "b", "a" never: apps are left out.
+        assertEquals(listOf("d", "c", "b", "a"), homeOrder(apps, setOf("d"), mapOf("b" to 10L, "c" to 20L, "tool" to 99L)).map { it.pkg })
+    }
+
+    @Test
     fun downloadNamesAreSafeFileNames() {
         assertEquals("com.beatgames.beatsaber.apk", apkFileName("com.beatgames.beatsaber"))
         // GitHub catalog entries have no real package name; their key holds a slash and a colon.

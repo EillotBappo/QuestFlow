@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Meta Spatial SDK keys a panel's registration by a resource id (HomeXr.kt). -->
+    <item name="home_xr_panel" type="id" />
+</resources>

@@ -40,6 +40,14 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")
     // Streaming JSON reader: F-Droid's index is ~70 MB, too big for org.json, and android.util.JsonReader can't run in unit tests.
     implementation("com.google.code.gson:gson:2.11.0")
+    // Passthrough home (HomeXr.kt). 0.13.0 is the newest Meta Spatial SDK that Kotlin 2.0.21 can compile against: 0.13.1 and
+    // later are built with Kotlin 2.2 metadata. Meta's Gradle plugin is left out; it only generates custom components and exports
+    // Spatial Editor scenes, and this uses neither.
+    val spatial = "0.13.0"
+    implementation("com.meta.spatial:meta-spatial-sdk:$spatial")
+    implementation("com.meta.spatial:meta-spatial-sdk-toolkit:$spatial")
+    implementation("com.meta.spatial:meta-spatial-sdk-vr:$spatial")
+    implementation("com.meta.spatial:meta-spatial-sdk-compose:$spatial")
     testImplementation("junit:junit:4.13.2")
     // Android's org.json is a stub on the JVM; unit tests need the real one.
     testImplementation("org.json:json:20240303")
