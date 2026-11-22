@@ -277,11 +277,11 @@ private fun PairDialog(s: AppState) {
         title = { Text("Pair with headset") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-                Text("1. Open Android's Developer options (if it opens on Android's main Settings page: System → Developer options) and turn on Wireless debugging.\n2. Tap \"Pair device with pairing code\".\n3. Enter the port (after the colon) and the 6-digit code here.", color = Palette.Dim)
+                Text("1. Open Android's Developer options (if it opens on Android's main Settings page: System → Developer options) and turn on Wireless debugging.\n2. Tap \"Pair device with pairing code\".\n3. Enter the IP address & port it shows (or just the port) and the 6-digit code here.", color = Palette.Dim)
                 PillButton("Open Android Developer options", {
                     if (!openNativeDeveloperOptions(s.ctx)) s.status = "Couldn't open Android's Developer options. Enable Developer mode in the Meta Horizon app first"
                 }, icon = QIcons.OpenInNew)
-                InputPill(port, { port = it.filter(Char::isDigit) }, "Pairing port", Modifier.fillMaxWidth())
+                InputPill(port, { port = it.filter { c -> c.isDigit() || c == '.' || c == ':' } }, "IP address & port, e.g. 192.168.1.20:37123", Modifier.fillMaxWidth())
                 InputPill(code, { code = it.filter(Char::isDigit) }, "Pairing code (6 digits)", Modifier.fillMaxWidth())
             }
         },
@@ -289,12 +289,12 @@ private fun PairDialog(s: AppState) {
             PillButton("Pair", {
                 s.pairing = false
                 s.task("Pairing") {
-                    WirelessAdb(s.ctx).pairWith(port.toInt(), code)
+                    WirelessAdb(s.ctx).pairWith(port.substringBeforeLast(':', "127.0.0.1"), port.substringAfterLast(':').toInt(), code)
                     s.installer.connect()
                     s.refreshApps()
                     "Paired and connected"
                 }
-            }, tone = Tone.Accent, enabled = port.isNotEmpty() && code.length == 6)
+            }, tone = Tone.Accent, enabled = port.substringAfterLast(':').toIntOrNull() != null && code.length == 6)
         },
         dismissButton = { PillButton("Cancel", { s.pairing = false }) },
     )

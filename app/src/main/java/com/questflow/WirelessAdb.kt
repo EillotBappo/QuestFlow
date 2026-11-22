@@ -49,9 +49,9 @@ class WirelessAdb(private val ctx: Context) : AbsAdbConnectionManager() {
     override fun getCertificate() = cert
     override fun getDeviceName() = "QuestFlow"
 
-    /** Port and six-digit code from Developer options > Wireless debugging > Pair device with pairing code. */
-    fun pairWith(port: Int, code: String) {
-        check(pair("127.0.0.1", port, code)) { "Pairing failed; check the port and code" }
+    /** IP address (127.0.0.1 if only the port was given), port and six-digit code from Developer options > Wireless debugging > Pair device with pairing code. */
+    fun pairWith(host: String, port: Int, code: String) {
+        check(pair(host, port, code)) { "Pairing failed; check the port and code" }
         prefs(ctx).edit().putBoolean("paired", true).apply()
     }
 
